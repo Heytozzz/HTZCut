@@ -6,10 +6,11 @@
 #                (vanilla, another mod's, or HTZCut's own bundled UI
 #                sounds once those are registered)
 #   - narration: sends a translatable chat message
-#   - dialogue:  plays a dynamic .ogg from audios/dialogues/ (routed
-#                through Simple Voice Chat or the HTTP fallback -
-#                HTZCut handles transcoding/caching automatically,
-#                nothing technical belongs here)
+#   - dialogue:  plays a dynamic .ogg placed in
+#                config/htzcut/audios/dialogues/ (routed through Simple
+#                Voice Chat when available, or HTZCut's embedded HTTP
+#                server as a fallback - just drop the file in, no
+#                transcoding step to run manually)
 
 id: "welcome_dragon_slain"
 
