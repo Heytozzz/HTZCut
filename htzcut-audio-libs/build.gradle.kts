@@ -36,7 +36,7 @@ tasks.shadowJar {
     mergeServiceFiles() // keeps javax.sound.sampled SPI registration working after relocation
     relocate("org.tritonus", "com.heytozzz.htzcut.audiolibs.shaded.tritonus")
     relocate("javazoom", "com.heytozzz.htzcut.audiolibs.shaded.javazoom")
-    relocate("org.jcraft", "com.heytozzz.htzcut.audiolibs.shaded.jcraft")
+    relocate("com.jcraft", "com.heytozzz.htzcut.audiolibs.shaded.jcraft")
 }
 
 // Make the relocated shadowJar output the artifact other subprojects get
