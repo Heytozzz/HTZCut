@@ -1,4 +1,6 @@
 import java.util.Properties
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 // Loads mod version info from version.properties so it can be read
 // from any subproject and from the version bump task below.
@@ -20,7 +22,7 @@ allprojects {
 subprojects {
     apply(plugin = "java")
 
-    java {
+    extensions.configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(21))
         }
