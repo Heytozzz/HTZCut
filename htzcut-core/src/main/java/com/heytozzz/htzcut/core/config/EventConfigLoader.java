@@ -3,8 +3,12 @@ package com.heytozzz.htzcut.core.config;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
+import org.yaml.snakeyaml.error.YAMLException;
 import org.yaml.snakeyaml.introspector.Property;
 import org.yaml.snakeyaml.introspector.PropertyUtils;
+import org.yaml.snakeyaml.nodes.Node;
+import org.yaml.snakeyaml.nodes.NodeId;
+import org.yaml.snakeyaml.nodes.ScalarNode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,16 +28,7 @@ public class EventConfigLoader {
     private final Yaml yaml;
 
     public EventConfigLoader() {
-        Constructor constructor = new Constructor(EventDefinition.class, new LoaderOptions());
-        // Event YAML is intentionally written in snake_case (text_key,
-        // once_per_player, ...) since that's the friendlier convention for
-        // people hand-editing config files - it's not meant to mirror our
-        // internal camelCase Java field names. SnakeYAML's default property
-        // lookup requires an exact match, so this translates snake_case
-        // keys to camelCase before resolving against EventDefinition's
-        // JavaBean properties.
-        constructor.setPropertyUtils(new SnakeCasePropertyUtils());
-        this.yaml = new Yaml(constructor);
+        this.yaml = new Yaml(new LenientEventConstructor(new LoaderOptions()));
     }
 
     public List<EventDefinition> loadAll(Path eventsDirectory) throws IOException {
@@ -59,6 +54,45 @@ public class EventConfigLoader {
         }
 
         return definitions;
+    }
+
+    /**
+     * SnakeYAML's defaults require exact, case-sensitive matches for both
+     * property names and enum values, which doesn't fit how we want event
+     * YAML to read: snake_case keys (text_key, once_per_player) and
+     * lowercase enum values (type: sound) rather than shouting-case Java
+     * constants (TYPE: SOUND). This constructor relaxes both:
+     *   - property lookup: snake_case -> camelCase before resolving
+     *     against EventDefinition's JavaBean properties
+     *   - enum values: matched case-insensitively against the enum's
+     *     constant names
+     */
+    private static class LenientEventConstructor extends Constructor {
+
+        LenientEventConstructor(LoaderOptions loaderOptions) {
+            super(EventDefinition.class, loaderOptions);
+            setPropertyUtils(new SnakeCasePropertyUtils());
+            yamlClassConstructors.put(NodeId.scalar, new CaseInsensitiveEnumConstruct());
+        }
+
+        private class CaseInsensitiveEnumConstruct extends ConstructScalar {
+            @Override
+            public Object construct(Node node) {
+                if (!node.getType().isEnum()) {
+                    return super.construct(node);
+                }
+
+                String value = ((ScalarNode) node).getValue();
+                for (Object constant : node.getType().getEnumConstants()) {
+                    if (((Enum<?>) constant).name().equalsIgnoreCase(value)) {
+                        return constant;
+                    }
+                }
+
+                throw new YAMLException("Unable to find enum value '" + value
+                        + "' for enum class: " + node.getType().getName());
+            }
+        }
     }
 
     private static class SnakeCasePropertyUtils extends PropertyUtils {
