@@ -53,11 +53,12 @@ dependencies {
     // Client-side dialogue audio playback (ClientDialogueHandler) uses
     // javax.sound.sampled to play the downloaded .ogg. The JDK has no
     // built-in Ogg Vorbis decoder, so vorbisspi registers one as a
-    // javax.sound.sampled SPI provider. tritonus-share is vorbisspi's
-    // own runtime dependency; jorbis/jogg are the actual Ogg Vorbis
-    // decoding libraries underneath it. All embedded explicitly since,
-    // as with snakeyaml above, jarJar doesn't reliably resolve a
-    // dependency's own transitive closure for us.
+    // javax.sound.sampled SPI provider. tritonus-share and jorbis are
+    // vorbisspi's own runtime dependencies (same "soundlibs" packaging
+    // group as vorbisspi itself - jorbis already includes Ogg bitstream
+    // reading internally, no separate "jogg" artifact is needed). All
+    // embedded explicitly since, as with snakeyaml above, jarJar doesn't
+    // reliably resolve a dependency's own transitive closure for us.
     jarJar(implementation("com.googlecode.soundlibs:vorbisspi") {
         version {
             strictly("[1.0,2.0)")
@@ -70,16 +71,10 @@ dependencies {
             prefer("0.3.7.4")
         }
     })
-    jarJar(implementation("org.jcraft:jorbis") {
+    jarJar(implementation("com.googlecode.soundlibs:jorbis") {
         version {
             strictly("[0.0,1.0)")
-            prefer("0.0.17")
-        }
-    })
-    jarJar(implementation("org.jcraft:jogg") {
-        version {
-            strictly("[0.0,1.0)")
-            prefer("0.0.7")
+            prefer("0.0.17.4")
         }
     })
 
