@@ -22,6 +22,9 @@ public class SimpleVoiceChatDeliveryChannel implements AudioDeliveryChannel {
 
     @Override
     public boolean isAvailableFor(UUID playerId) {
+        if (!SimpleVoiceChatSupport.isAvailable()) {
+            return false;
+        }
         // TODO: VoicechatServerApi#getConnectionOf(playerId) != null
         return false;
     }

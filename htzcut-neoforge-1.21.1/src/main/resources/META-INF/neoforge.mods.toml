@@ -36,11 +36,15 @@ event-triggered audio delivery via Simple Voice Chat or HTTP fallback.
     ordering = "AFTER"
     side = "BOTH"
 
-# Soft depend - Simple Voice Chat. Absent -> HTTP fallback is used for
-# all dialogue audio automatically.
+# Soft depend - Simple Voice Chat. No versionRange is declared on purpose:
+# SVC's version string is prefixed with the Minecraft version it targets
+# (e.g. "1.21.1-2.6.21"), which breaks numeric range comparisons and would
+# have to be re-tuned for every Minecraft version anyway. Real compatibility
+# is checked at runtime via defensive reflection/try-catch (see
+# audio/SimpleVoiceChatSupport) rather than gated here. Absent or
+# incompatible -> HTTP fallback is used automatically, per player.
 [[dependencies.htzcut]]
     modId = "voicechat"
     type = "optional"
-    versionRange = "[2,)"
     ordering = "AFTER"
     side = "BOTH"
