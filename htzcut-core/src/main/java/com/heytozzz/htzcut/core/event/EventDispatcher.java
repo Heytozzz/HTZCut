@@ -2,6 +2,7 @@ package com.heytozzz.htzcut.core.event;
 
 import com.heytozzz.htzcut.core.audio.AudioDeliveryRouter;
 import com.heytozzz.htzcut.core.config.EventDefinition;
+import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
 import com.heytozzz.htzcut.core.trigger.HTZTriggerFired;
 
@@ -25,6 +26,7 @@ public class EventDispatcher {
     private final List<EventDefinition> definitions;
     private final PermissionChecker permissionChecker;
     private final AudioDeliveryRouter audioDeliveryRouter;
+    private final NarrationSink narrationSink;
 
     // Tracks which (playerId, eventId) pairs have already fired, for
     // once_per_player conditions. A real implementation should persist
@@ -33,10 +35,12 @@ public class EventDispatcher {
 
     public EventDispatcher(List<EventDefinition> definitions,
                             PermissionChecker permissionChecker,
-                            AudioDeliveryRouter audioDeliveryRouter) {
+                            AudioDeliveryRouter audioDeliveryRouter,
+                            NarrationSink narrationSink) {
         this.definitions = definitions;
         this.permissionChecker = permissionChecker;
         this.audioDeliveryRouter = audioDeliveryRouter;
+        this.narrationSink = narrationSink;
     }
 
     public void onTrigger(HTZTriggerFired trigger) {
@@ -78,8 +82,12 @@ public class EventDispatcher {
         if (def.getAudio() != null) {
             audioDeliveryRouter.playDialogue(playerId, def.getAudio().getId());
         }
-        // Narration text dispatch (chat/subtitle/cinematic hook) is handled
-        // by the neoforge module, which listens via a callback here in a
-        // later iteration - kept out of scope for the skeleton stage.
+        if (def.getNarration() != null) {
+            narrationSink.sendNarration(
+                    playerId,
+                    def.getNarration().getTextKey(),
+                    def.getNarration().getFallbackLocale()
+            );
+        }
     }
 }
