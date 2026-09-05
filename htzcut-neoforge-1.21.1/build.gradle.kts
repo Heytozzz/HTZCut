@@ -30,7 +30,14 @@ neoForge {
 }
 
 dependencies {
+    // "implementation" only puts htzcut-core on the classpath for
+    // compiling/running from Gradle - it does NOT bundle its classes into
+    // the distributable jar. "jarJar" is NeoForge's officially supported
+    // mechanism for embedding a subproject's classes inside the final mod
+    // jar (Jar-in-Jar), which is what actually ships to players and fixes
+    // the NoClassDefFoundError at runtime.
     implementation(project(":htzcut-core"))
+    jarJar(project(":htzcut-core"))
 
     // Soft depends - compileOnly, presence is detected at runtime.
     // Real coordinates/repositories to be pinned once we wire up the
