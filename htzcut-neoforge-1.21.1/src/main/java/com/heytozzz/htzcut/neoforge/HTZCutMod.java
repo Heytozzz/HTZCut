@@ -8,6 +8,7 @@ import com.heytozzz.htzcut.core.permission.PermissionChecker;
 import com.heytozzz.htzcut.neoforge.audio.HttpCacheDeliveryChannel;
 import com.heytozzz.htzcut.neoforge.audio.HtzHttpAudioServer;
 import com.heytozzz.htzcut.neoforge.audio.SimpleVoiceChatDeliveryChannel;
+import com.heytozzz.htzcut.neoforge.command.HTZCommand;
 import com.heytozzz.htzcut.neoforge.config.EventFileManager;
 import com.heytozzz.htzcut.neoforge.config.HttpServerConfig;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
@@ -21,6 +22,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 
@@ -36,6 +38,14 @@ public class HTZCutMod {
 
     private HtzHttpAudioServer httpAudioServer;
 
+    // Kept around so /htzcut reload can rebuild just the event list and
+    // dispatcher without tearing down the HTTP server or re-detecting
+    // the permission backend every time.
+    private PermissionChecker permissionChecker;
+    private AudioDeliveryRouter audioRouter;
+    private ChatNarrationSink narrationSink;
+    private VanillaSoundSink soundSink;
+
     public HTZCutMod(IEventBus modEventBus) {
         HTZLog.info("Initializing HTZCut...");
 
@@ -47,10 +57,11 @@ public class HTZCutMod {
         NeoForge.EVENT_BUS.register(new GameTriggerListeners());
         NeoForge.EVENT_BUS.addListener(this::onServerStarting);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
+        NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
     }
 
     private void onServerStarting(ServerStartingEvent event) {
-        PermissionChecker permissionChecker = PermissionCheckerFactory.detect();
+        permissionChecker = PermissionCheckerFactory.detect();
         HTZLog.info("Permission backend in use: " + permissionChecker.backendName());
 
         Path dialoguesDir = FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("audios").resolve("dialogues");
@@ -66,7 +77,7 @@ public class HTZCutMod {
         httpAudioServer = new HtzHttpAudioServer(assetResolver, httpConfig.port());
         httpAudioServer.start();
 
-        AudioDeliveryRouter audioRouter = new AudioDeliveryRouter(
+        audioRouter = new AudioDeliveryRouter(
                 List.of(
                         new SimpleVoiceChatDeliveryChannel(),
                         new HttpCacheDeliveryChannel(event.getServer(), httpConfig)
@@ -74,21 +85,40 @@ public class HTZCutMod {
                 assetResolver
         );
 
-        ChatNarrationSink narrationSink = new ChatNarrationSink(event.getServer());
-        VanillaSoundSink soundSink = new VanillaSoundSink(event.getServer());
+        narrationSink = new ChatNarrationSink(event.getServer());
+        soundSink = new VanillaSoundSink(event.getServer());
 
-        List<EventDefinition> definitions = EventFileManager.loadOrInitialize();
-        HTZLog.info("Loaded " + definitions.size() + " event definition(s).");
         HTZLog.info("Drop dialogue .ogg files into " + dialoguesDir + " to make them playable.");
 
-        EventDispatcher dispatcher = new EventDispatcher(
-                definitions, permissionChecker, audioRouter, narrationSink, soundSink);
-        HTZRuntime.set(dispatcher);
+        rebuildDispatcher();
     }
 
     private void onServerStopping(ServerStoppingEvent event) {
         if (httpAudioServer != null) {
             httpAudioServer.stop();
         }
+    }
+
+    private void onRegisterCommands(RegisterCommandsEvent event) {
+        HTZCommand.register(event.getDispatcher(), this);
+    }
+
+    /**
+     * Re-reads every event YAML from config/htzcut/events/ and rebuilds
+     * the EventDispatcher, without touching the HTTP server, permission
+     * backend, or delivery channels. Called on server start and from
+     * /htzcut reload.
+     *
+     * @return how many event definitions were loaded, for command feedback
+     */
+    public int rebuildDispatcher() {
+        List<EventDefinition> definitions = EventFileManager.loadOrInitialize();
+        HTZLog.info("Loaded " + definitions.size() + " event definition(s).");
+
+        EventDispatcher dispatcher = new EventDispatcher(
+                definitions, permissionChecker, audioRouter, narrationSink, soundSink);
+        HTZRuntime.set(dispatcher);
+
+        return definitions.size();
     }
 }
