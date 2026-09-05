@@ -8,6 +8,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 import java.util.UUID;
@@ -36,7 +37,7 @@ public class GameTriggerListeners {
     }
 
     @SubscribeEvent
-    public void onAdvancementEarned(AdvancementEvent.AdvancementEarnedEvent event) {
+    public void onAdvancementEarned(AdvancementEvent.AdvancementEarnEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
@@ -56,12 +57,12 @@ public class GameTriggerListeners {
     }
 
     @SubscribeEvent
-    public void onItemPickup(PlayerEvent.ItemPickupEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) {
+    public void onItemPickup(ItemEntityPickupEvent.Post event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) {
             return;
         }
 
-        String itemId = BuiltInRegistries.ITEM.getKey(event.getStack().getItem()).toString();
+        String itemId = BuiltInRegistries.ITEM.getKey(event.getOriginalStack().getItem()).toString();
         dispatch(player.getUUID(), TriggerType.ITEM_PICKUP, itemId);
     }
 
