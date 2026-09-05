@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HTZCut Editor</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; background: #1e1f22; color: #eee; margin: 0; }
+  header { padding: 12px 16px; background: #2b2d31; display: flex; gap: 12px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0; flex: 1; }
+  input[type=text] { padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1f22; color: #eee; width: 220px; }
+  .tabs { display: flex; gap: 4px; padding: 8px 16px; background: #26282c; }
+  .tab { padding: 6px 14px; border-radius: 4px; cursor: pointer; background: #2b2d31; }
+  .tab.active { background: #4c7bd9; }
+  .toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 16px; }
+  .toolbar button { padding: 4px 10px; border-radius: 4px; border: 1px solid #444; background: #2b2d31; color: #eee; cursor: pointer; }
+  .toolbar button.active { background: #4c7bd9; }
+  #results { padding: 8px 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+  .grid .entry { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 6px; cursor: pointer; }
+  .grid .entry:hover { background: #33353a; }
+  .grid .entry img, .grid .entry .noicon { width: 32px; height: 32px; image-rendering: pixelated; }
+  .grid .entry span { font-size: 10px; margin-top: 4px; text-align: center; word-break: break-all; }
+  .list .entry { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+  .list .entry:hover { background: #33353a; }
+  .list .entry img, .list .entry .noicon { width: 24px; height: 24px; image-rendering: pixelated; }
+  .noicon { background: #444; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HTZCut - Selector de recursos</h1>
+  <input type="text" id="search" placeholder="Buscar por id o namespace...">
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="items">Items</div>
+  <div class="tab" data-tab="sounds">Sonidos</div>
+  <div class="tab" data-tab="advancements">Advancements</div>
+</div>
+
+<div class="toolbar">
+  <button id="view-grid" class="active">Rejilla</button>
+  <button id="view-list">Lista</button>
+  <span id="count" style="opacity:.6; font-size: 12px;"></span>
+</div>
+
+<div id="results"></div>
+
+<script>
+// --- State ---
+let currentTab = "items";
+let currentView = "grid";
+let data = { items: [], sounds: [], advancements: [] };
+
+// --- Fetch registries from the server on load ---
+async function loadAll() {
+  const [items, sounds, advancements] = await Promise.all([
+    fetch("/api/registries/items").then(r => r.json()),
+    fetch("/api/registries/sounds").then(r => r.json()),
+    fetch("/api/registries/advancements").then(r => r.json()),
+  ]);
+  data.items = items;
+  data.sounds = sounds;
+  data.advancements = advancements;
+  render();
+}
+
+// Best-effort guess at an item's flat texture path. Covers the vast
+// majority of vanilla and modded items; a minority with non-standard
+// model/texture layouts may show no icon - a known limitation of this
+// simple heuristic-based approach (no real model resolution yet).
+function itemIconUrl(itemId) {
+  const [namespace, path] = itemId.split(":");
+  return `/assets/${namespace}/textures/item/${path}.png`;
+}
+
+function matchesSearch(id, query) {
+  return !query || id.toLowerCase().includes(query.toLowerCase());
+}
+
+function render() {
+  const query = document.getElementById("search").value;
+  const container = document.getElementById("results");
+  container.className = currentView;
+  container.innerHTML = "";
+
+  let entries = [];
+  if (currentTab === "items") {
+    entries = data.items
+      .filter(e => matchesSearch(e.id, query))
+      .map(e => ({ id: e.id, icon: itemIconUrl(e.id) }));
+  } else if (currentTab === "sounds") {
+    entries = data.sounds
+      .filter(e => matchesSearch(e.id, query))
+      .map(e => ({ id: e.id, icon: null }));
+  } else if (currentTab === "advancements") {
+    entries = data.advancements
+      .filter(e => matchesSearch(e.id, query))
+      .map(e => ({ id: e.id, icon: e.icon ? itemIconUrl(e.icon) : null }));
+  }
+
+  document.getElementById("count").textContent = entries.length + " resultado(s)";
+
+  for (const entry of entries) {
+    const el = document.createElement("div");
+    el.className = "entry";
+    el.title = entry.id;
+
+    if (entry.icon) {
+      const img = document.createElement("img");
+      img.src = entry.icon;
+      img.onerror = () => { img.replaceWith(makeNoIcon()); };
+      el.appendChild(img);
+    } else {
+      el.appendChild(makeNoIcon());
+    }
+
+    const label = document.createElement("span");
+    label.textContent = entry.id;
+    el.appendChild(label);
+
+    el.addEventListener("click", () => {
+      // For now: just copy the id to the clipboard, since this is a
+      // standalone picker page - wiring "selecting a value fills in the
+      // event YAML field" comes with the full event editor UI.
+      navigator.clipboard?.writeText(entry.id);
+      el.style.background = "#4c7bd9";
+      setTimeout(() => { el.style.background = ""; }, 300);
+    });
+
+    container.appendChild(el);
+  }
+}
+
+function makeNoIcon() {
+  const div = document.createElement("div");
+  div.className = "noicon";
+  return div;
+}
+
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    currentTab = tab.dataset.tab;
+    render();
+  });
+});
+
+document.getElementById("view-grid").addEventListener("click", () => {
+  currentView = "grid";
+  document.getElementById("view-grid").classList.add("active");
+  document.getElementById("view-list").classList.remove("active");
+  render();
+});
+document.getElementById("view-list").addEventListener("click", () => {
+  currentView = "list";
+  document.getElementById("view-list").classList.add("active");
+  document.getElementById("view-grid").classList.remove("active");
+  render();
+});
+document.getElementById("search").addEventListener("input", render);
+
+loadAll();
+</script>
+
+</body>
+</html>

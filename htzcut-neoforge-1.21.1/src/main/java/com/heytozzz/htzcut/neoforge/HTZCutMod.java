@@ -18,6 +18,8 @@ import com.heytozzz.htzcut.neoforge.network.NetworkRegistration;
 import com.heytozzz.htzcut.neoforge.permission.PermissionCheckerFactory;
 import com.heytozzz.htzcut.neoforge.sound.VanillaSoundSink;
 import com.heytozzz.htzcut.neoforge.trigger.GameTriggerListeners;
+import com.heytozzz.htzcut.neoforge.webeditor.WebEditorConfig;
+import com.heytozzz.htzcut.neoforge.webeditor.WebEditorServer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLPaths;
@@ -37,6 +39,7 @@ public class HTZCutMod {
     public static final String MOD_ID = "htzcut";
 
     private HtzHttpAudioServer httpAudioServer;
+    private WebEditorServer webEditorServer;
 
     // Kept around so /htzcut reload can rebuild just the event list and
     // dispatcher without tearing down the HTTP server or re-detecting
@@ -88,6 +91,10 @@ public class HTZCutMod {
         narrationSink = new ChatNarrationSink(event.getServer());
         soundSink = new VanillaSoundSink(event.getServer());
 
+        WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
+        webEditorServer = new WebEditorServer(event.getServer(), webEditorConfig.port());
+        webEditorServer.start();
+
         HTZLog.info("Drop dialogue .ogg files into " + dialoguesDir + " to make them playable.");
 
         rebuildDispatcher();
@@ -96,6 +103,9 @@ public class HTZCutMod {
     private void onServerStopping(ServerStoppingEvent event) {
         if (httpAudioServer != null) {
             httpAudioServer.stop();
+        }
+        if (webEditorServer != null) {
+            webEditorServer.stop();
         }
     }
 
