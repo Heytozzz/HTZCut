@@ -23,7 +23,8 @@ public final class EventFileManager {
     // Add new bundled default file names here as they're added under
     // src/main/resources/events/.
     private static final String[] DEFAULT_EVENT_FILES = {
-            "example_dragon_defeated.yaml"
+            "example_dragon_defeated.yaml",
+            "example_diamond_pickup.yaml"
     };
 
     private EventFileManager() {

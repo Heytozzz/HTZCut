@@ -1,0 +1,19 @@
+# Second example: a lightweight event with just a sound + narration,
+# no dialogue audio. Good template for quick "ding" style feedback.
+
+id: "diamond_pickup"
+
+trigger:
+  type: ITEM_PICKUP
+  value: "minecraft:diamond"
+
+actions:
+  - type: sound
+    sound: "minecraft:ui.toast.challenge_complete"
+
+  - type: narration
+    text_key: "htzcut.narration.diamond_pickup"
+    fallback_locale: "en_us"
+
+conditions:
+  once_per_player: false

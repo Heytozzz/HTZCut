@@ -1,9 +1,15 @@
 # Example event definition. Drop files like this one into this folder;
-# HTZCut loads every *.yaml file here on startup and via /htzcut reload.
+# HTZCut loads every *.yaml file here on startup.
 #
-# The "audio.file" field just needs to match a file name under
-# audios/dialogues/ - HTZCut handles transcoding, caching and picking
-# SVC vs HTTP delivery automatically. Nothing technical belongs here.
+# An event can run multiple "actions" in order when it fires:
+#   - sound:     plays an already-registered SoundEvent by its full id
+#                (vanilla, another mod's, or HTZCut's own bundled UI
+#                sounds once those are registered)
+#   - narration: sends a translatable chat message
+#   - dialogue:  plays a dynamic .ogg from audios/dialogues/ (routed
+#                through Simple Voice Chat or the HTTP fallback -
+#                HTZCut handles transcoding/caching automatically,
+#                nothing technical belongs here)
 
 id: "welcome_dragon_slain"
 
@@ -11,13 +17,16 @@ trigger:
   type: ADVANCEMENT
   value: "minecraft:end/kill_dragon"
 
-audio:
-  id: "dragon_defeated"
-  file: "dragon_defeated.ogg"
+actions:
+  - type: sound
+    sound: "minecraft:ui.toast.challenge_complete"
 
-narration:
-  text_key: "htzcut.narration.dragon_defeated"
-  fallback_locale: "en_us"
+  - type: narration
+    text_key: "htzcut.narration.dragon_defeated"
+    fallback_locale: "en_us"
+
+  - type: dialogue
+    audio: "dragon_defeated.ogg"
 
 conditions:
   permission: "htzcut.trigger.dragon"

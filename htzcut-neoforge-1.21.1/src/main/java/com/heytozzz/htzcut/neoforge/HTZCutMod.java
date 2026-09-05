@@ -12,6 +12,7 @@ import com.heytozzz.htzcut.neoforge.init.HTZLog;
 import com.heytozzz.htzcut.neoforge.init.HTZRuntime;
 import com.heytozzz.htzcut.neoforge.narration.ChatNarrationSink;
 import com.heytozzz.htzcut.neoforge.permission.PermissionCheckerFactory;
+import com.heytozzz.htzcut.neoforge.sound.VanillaSoundSink;
 import com.heytozzz.htzcut.neoforge.trigger.GameTriggerListeners;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -48,11 +49,13 @@ public class HTZCutMod {
         );
 
         ChatNarrationSink narrationSink = new ChatNarrationSink(event.getServer());
+        VanillaSoundSink soundSink = new VanillaSoundSink(event.getServer());
 
         List<EventDefinition> definitions = EventFileManager.loadOrInitialize();
         HTZLog.info("Loaded " + definitions.size() + " event definition(s).");
 
-        EventDispatcher dispatcher = new EventDispatcher(definitions, permissionChecker, audioRouter, narrationSink);
+        EventDispatcher dispatcher = new EventDispatcher(
+                definitions, permissionChecker, audioRouter, narrationSink, soundSink);
         HTZRuntime.set(dispatcher);
     }
 }

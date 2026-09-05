@@ -4,9 +4,9 @@ import com.heytozzz.htzcut.core.audio.AudioDeliveryRouter;
 import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
+import com.heytozzz.htzcut.core.sound.SoundSink;
 import com.heytozzz.htzcut.core.trigger.HTZTriggerFired;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Receives loader-agnostic trigger notifications and, for every matching
  * EventDefinition, checks conditions (permission, once-per-player) and
- * asks the AudioDeliveryRouter to play the associated dialogue.
+ * executes each of its actions in declaration order.
  *
  * This class has zero knowledge of NeoForge, advancements, dimensions,
  * etc. - it only reacts to HTZTriggerFired instances that the neoforge
@@ -27,6 +27,7 @@ public class EventDispatcher {
     private final PermissionChecker permissionChecker;
     private final AudioDeliveryRouter audioDeliveryRouter;
     private final NarrationSink narrationSink;
+    private final SoundSink soundSink;
 
     // Tracks which (playerId, eventId) pairs have already fired, for
     // once_per_player conditions. A real implementation should persist
@@ -36,11 +37,13 @@ public class EventDispatcher {
     public EventDispatcher(List<EventDefinition> definitions,
                             PermissionChecker permissionChecker,
                             AudioDeliveryRouter audioDeliveryRouter,
-                            NarrationSink narrationSink) {
+                            NarrationSink narrationSink,
+                            SoundSink soundSink) {
         this.definitions = definitions;
         this.permissionChecker = permissionChecker;
         this.audioDeliveryRouter = audioDeliveryRouter;
         this.narrationSink = narrationSink;
+        this.soundSink = soundSink;
     }
 
     public void onTrigger(HTZTriggerFired trigger) {
@@ -79,15 +82,21 @@ public class EventDispatcher {
     }
 
     private void fire(EventDefinition def, UUID playerId) {
-        if (def.getAudio() != null) {
-            audioDeliveryRouter.playDialogue(playerId, def.getAudio().getId());
+        if (def.getActions() == null) {
+            return;
         }
-        if (def.getNarration() != null) {
-            narrationSink.sendNarration(
-                    playerId,
-                    def.getNarration().getTextKey(),
-                    def.getNarration().getFallbackLocale()
-            );
+
+        for (EventDefinition.ActionConfig action : def.getActions()) {
+            if (action.getType() == null) {
+                continue;
+            }
+
+            switch (action.getType()) {
+                case SOUND -> soundSink.playSound(playerId, action.getSound());
+                case NARRATION -> narrationSink.sendNarration(
+                        playerId, action.getTextKey(), action.getFallbackLocale());
+                case DIALOGUE -> audioDeliveryRouter.playDialogue(playerId, action.getAudio());
+            }
         }
     }
 }

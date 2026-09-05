@@ -1,19 +1,21 @@
 package com.heytozzz.htzcut.core.config;
 
+import com.heytozzz.htzcut.core.action.ActionType;
 import com.heytozzz.htzcut.core.trigger.TriggerType;
+
+import java.util.List;
 
 /**
  * Plain data representation of a single event YAML file under /events.
- * Intentionally kept as simple, user-facing fields only - no codec, path
- * or transport details belong here. Those are resolved internally by
- * AudioAssetResolver / AudioDeliveryRouter at runtime.
+ * Intentionally kept as simple, user-facing fields only - no codec,
+ * path or transport details belong here. Those are resolved internally
+ * by AudioAssetResolver / AudioDeliveryRouter at runtime.
  */
 public class EventDefinition {
 
     private String id;
     private TriggerConfig trigger;
-    private AudioConfig audio;
-    private NarrationConfig narration;
+    private List<ActionConfig> actions;
     private ConditionsConfig conditions;
 
     public String getId() {
@@ -32,20 +34,12 @@ public class EventDefinition {
         this.trigger = trigger;
     }
 
-    public AudioConfig getAudio() {
-        return audio;
+    public List<ActionConfig> getActions() {
+        return actions;
     }
 
-    public void setAudio(AudioConfig audio) {
-        this.audio = audio;
-    }
-
-    public NarrationConfig getNarration() {
-        return narration;
-    }
-
-    public void setNarration(NarrationConfig narration) {
-        this.narration = narration;
+    public void setActions(List<ActionConfig> actions) {
+        this.actions = actions;
     }
 
     public ConditionsConfig getConditions() {
@@ -78,34 +72,35 @@ public class EventDefinition {
     }
 
     /**
-     * User only ever provides an id + a file name. Whether this resolves
-     * to SVC opus frames or an HTTP-servable file is decided internally
-     * by AudioAssetResolver, never configured here.
+     * A single action executed when the event fires. Only the fields
+     * relevant to its "type" need to be set - which fields those are is
+     * documented per ActionType:
+     *   SOUND     -> sound
+     *   NARRATION -> textKey, fallbackLocale
+     *   DIALOGUE  -> audio
      */
-    public static class AudioConfig {
-        private String id;
-        private String file;
-
-        public String getId() {
-            return id;
-        }
-
-        public void setId(String id) {
-            this.id = id;
-        }
-
-        public String getFile() {
-            return file;
-        }
-
-        public void setFile(String file) {
-            this.file = file;
-        }
-    }
-
-    public static class NarrationConfig {
+    public static class ActionConfig {
+        private ActionType type;
+        private String sound;
         private String textKey;
         private String fallbackLocale;
+        private String audio;
+
+        public ActionType getType() {
+            return type;
+        }
+
+        public void setType(ActionType type) {
+            this.type = type;
+        }
+
+        public String getSound() {
+            return sound;
+        }
+
+        public void setSound(String sound) {
+            this.sound = sound;
+        }
 
         public String getTextKey() {
             return textKey;
@@ -121,6 +116,14 @@ public class EventDefinition {
 
         public void setFallbackLocale(String fallbackLocale) {
             this.fallbackLocale = fallbackLocale;
+        }
+
+        public String getAudio() {
+            return audio;
+        }
+
+        public void setAudio(String audio) {
+            this.audio = audio;
         }
     }
 
