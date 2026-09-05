@@ -50,33 +50,18 @@ dependencies {
         }
     })
 
-    // Client-side dialogue audio playback (ClientDialogueHandler) uses
-    // javax.sound.sampled to play the downloaded .ogg. The JDK has no
-    // built-in Ogg Vorbis decoder, so vorbisspi registers one as a
-    // javax.sound.sampled SPI provider. tritonus-share and jorbis are
-    // vorbisspi's own runtime dependencies (same "soundlibs" packaging
-    // group as vorbisspi itself - jorbis already includes Ogg bitstream
-    // reading internally, no separate "jogg" artifact is needed). All
-    // embedded explicitly since, as with snakeyaml above, jarJar doesn't
-    // reliably resolve a dependency's own transitive closure for us.
-    jarJar(implementation("com.googlecode.soundlibs:vorbisspi") {
-        version {
-            strictly("[1.0,2.0)")
-            prefer("1.0.3.3")
-        }
-    })
-    jarJar(implementation("com.googlecode.soundlibs:tritonus-share") {
-        version {
-            strictly("[0.3,0.4)")
-            prefer("0.3.7.4")
-        }
-    })
-    jarJar(implementation("com.googlecode.soundlibs:jorbis") {
-        version {
-            strictly("[0.0,1.0)")
-            prefer("0.0.17.4")
-        }
-    })
+    // NOTE: client-side dialogue audio playback (ClientDialogueHandler)
+    // intentionally does NOT embed an external Ogg Vorbis decoding
+    // library (vorbisspi/jorbis/tritonus-share were tried and removed).
+    // Those old javazoom/jcraft libraries are commonly bundled by many
+    // unrelated mods under jar filenames that all resolve to the same
+    // Java module name ("jorbis", "tritonus-share", ...) regardless of
+    // Maven coordinates - which crashes the game with a
+    // java.lang.module.ResolutionException the moment a player also has
+    // some other mod (observed with Iris) that bundles a same-named
+    // module. Decoding instead uses Minecraft's own bundled
+    // com.mojang.blaze3d.audio.OggAudioStream, which can never collide
+    // with anything since it's not a jar we embed ourselves.
 
     // Soft depends - compileOnly, presence is detected at runtime.
     // Real coordinates/repositories to be pinned once we wire up the
