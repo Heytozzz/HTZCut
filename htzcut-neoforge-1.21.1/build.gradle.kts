@@ -39,6 +39,18 @@ dependencies {
     implementation(project(":htzcut-core"))
     jarJar(project(":htzcut-core"))
 
+    // htzcut-core depends on snakeyaml, but jarJar-ing a subproject only
+    // embeds that subproject's OWN compiled classes, not its external
+    // dependencies. snakeyaml has to be embedded here too, explicitly,
+    // using NeoForge's version-range syntax for external Jar-in-Jar deps.
+    implementation("org.yaml:snakeyaml:2.2")
+    jarJar(implementation("org.yaml:snakeyaml")) {
+        version {
+            strictly("[2.0,3.0)")
+            prefer("2.2")
+        }
+    }
+
     // Soft depends - compileOnly, presence is detected at runtime.
     // Real coordinates/repositories to be pinned once we wire up the
     // permission and audio delivery implementations.
