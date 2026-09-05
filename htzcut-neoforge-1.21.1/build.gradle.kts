@@ -51,17 +51,27 @@ dependencies {
     })
 
     // NOTE: client-side dialogue audio playback (ClientDialogueHandler)
-    // intentionally does NOT embed an external Ogg Vorbis decoding
-    // library (vorbisspi/jorbis/tritonus-share were tried and removed).
-    // Those old javazoom/jcraft libraries are commonly bundled by many
-    // unrelated mods under jar filenames that all resolve to the same
-    // Java module name ("jorbis", "tritonus-share", ...) regardless of
-    // Maven coordinates - which crashes the game with a
-    // java.lang.module.ResolutionException the moment a player also has
-    // some other mod (observed with Iris) that bundles a same-named
-    // module. Decoding instead uses Minecraft's own bundled
-    // com.mojang.blaze3d.audio.OggAudioStream, which can never collide
-    // with anything since it's not a jar we embed ourselves.
+    // decodes Ogg Vorbis via javax.sound.sampled, backed by vorbisspi.
+    // Two earlier approaches were tried and rejected here:
+    //   1. jarJar-ing vorbisspi/jorbis/tritonus-share directly as external
+    //      Maven coordinates crashed the game with a
+    //      java.lang.module.ResolutionException - Java derives a jar's
+    //      automatic module name from its FILENAME, and these old
+    //      javazoom/jcraft libraries are commonly bundled by many
+    //      unrelated mods (observed colliding with Iris) under names
+    //      that resolve to the same module regardless of Maven
+    //      coordinates used.
+    //   2. Minecraft's own internal com.mojang.blaze3d.audio.OggAudioStream
+    //      isn't public API and doesn't exist under that name/package in
+    //      1.21.1 the way it did in earlier versions - too unstable to
+    //      depend on.
+    // The htzcut-audio-libs subproject bundles the same libraries but
+    // RELOCATES their packages via the Shadow plugin, so the resulting
+    // merged jar shares no classes (and no module name) with any other
+    // mod's copy of the same libraries - permanently avoiding this
+    // collision regardless of what else is installed.
+    implementation(project(":htzcut-audio-libs"))
+    jarJar(project(":htzcut-audio-libs"))
 
     // Soft depends - compileOnly, presence is detected at runtime.
     // Real coordinates/repositories to be pinned once we wire up the
