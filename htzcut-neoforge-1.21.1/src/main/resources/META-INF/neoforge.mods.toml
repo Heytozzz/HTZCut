@@ -1,0 +1,46 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "All rights reserved"
+
+[[mods]]
+modId = "htzcut"
+version = "${file.jarVersion}"
+displayName = "HTZCut"
+authors = "Heytozzz"
+description = '''
+Dialogue, narration and cinematic events mod for Minecraft, with
+event-triggered audio delivery via Simple Voice Chat or HTTP fallback.
+'''
+
+[[dependencies.htzcut]]
+    modId = "neoforge"
+    type = "required"
+    versionRange = "[21.1,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.htzcut]]
+    modId = "minecraft"
+    type = "required"
+    versionRange = "[1.21.1,1.21.2)"
+    ordering = "NONE"
+    side = "BOTH"
+
+# Soft depend - LuckPerms mod variant. On hybrid servers, LuckPerms may
+# instead be present as a Bukkit plugin, which is detected separately
+# at runtime (see permission/PermissionCheckerFactory).
+[[dependencies.htzcut]]
+    modId = "luckperms"
+    type = "optional"
+    versionRange = "[5,)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+# Soft depend - Simple Voice Chat. Absent -> HTTP fallback is used for
+# all dialogue audio automatically.
+[[dependencies.htzcut]]
+    modId = "voicechat"
+    type = "optional"
+    versionRange = "[2,)"
+    ordering = "AFTER"
+    side = "BOTH"

@@ -1,0 +1,24 @@
+# Example event definition. Drop files like this one into this folder;
+# HTZCut loads every *.yaml file here on startup and via /htzcut reload.
+#
+# The "audio.file" field just needs to match a file name under
+# audios/dialogues/ - HTZCut handles transcoding, caching and picking
+# SVC vs HTTP delivery automatically. Nothing technical belongs here.
+
+id: "welcome_dragon_slain"
+
+trigger:
+  type: ADVANCEMENT
+  value: "minecraft:end/kill_dragon"
+
+audio:
+  id: "dragon_defeated"
+  file: "dragon_defeated.ogg"
+
+narration:
+  text_key: "htzcut.narration.dragon_defeated"
+  fallback_locale: "en_us"
+
+conditions:
+  permission: "htzcut.trigger.dragon"
+  once_per_player: true
