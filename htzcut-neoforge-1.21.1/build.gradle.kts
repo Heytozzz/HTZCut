@@ -2,16 +2,16 @@ plugins {
     id("net.neoforged.moddev") version "2.0.141"
 }
 
-val minecraftVersion: String by project
-val neoforgeVersion: String by project
-val modId: String by project
+val minecraft_version: String by project
+val neo_version: String by project
+val mod_id: String by project
 
 base {
-    archivesName.set("htzcut-neoforge-${minecraftVersion}")
+    archivesName.set("htzcut-neoforge-${minecraft_version}")
 }
 
 neoForge {
-    version = neoforgeVersion
+    version = neo_version
 
     runs {
         create("client") {
@@ -23,7 +23,7 @@ neoForge {
     }
 
     mods {
-        create(modId) {
+        create(mod_id) {
             sourceSet(sourceSets.main.get())
         }
     }
