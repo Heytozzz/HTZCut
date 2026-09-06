@@ -44,16 +44,25 @@ public class EventConfigLoader {
                     .toList();
 
             for (Path file : yamlFiles) {
-                try (InputStream in = Files.newInputStream(file)) {
-                    EventDefinition def = yaml.load(in);
-                    if (def != null) {
-                        definitions.add(def);
-                    }
+                EventDefinition def = loadOne(file);
+                if (def != null) {
+                    definitions.add(def);
                 }
             }
         }
 
         return definitions;
+    }
+
+    /**
+     * Loads a single event YAML file. Used by the web editor's event API
+     * to read one file at a time (get/edit), separately from the
+     * server's own full-directory startup/reload load.
+     */
+    public EventDefinition loadOne(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            return yaml.load(in);
+        }
     }
 
     /**

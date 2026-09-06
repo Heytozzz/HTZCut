@@ -92,7 +92,8 @@ public class HTZCutMod {
         soundSink = new VanillaSoundSink(event.getServer());
 
         WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
-        webEditorServer = new WebEditorServer(event.getServer(), webEditorConfig.port());
+        Path eventsDir = FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("events");
+        webEditorServer = new WebEditorServer(event.getServer(), webEditorConfig.port(), eventsDir);
         webEditorServer.start();
 
         HTZLog.info("Drop dialogue .ogg files into " + dialoguesDir + " to make them playable.");

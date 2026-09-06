@@ -1,5 +1,7 @@
 package com.heytozzz.htzcut.neoforge.webeditor;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -11,6 +13,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -26,22 +29,25 @@ import java.util.concurrent.Executors;
  *   GET /api/registries/items?q=&page=&size= -> paginated {total, items}
  *   GET /api/registries/sounds?q=&page=&size=-> paginated {total, items}
  *   GET /api/registries/advancements?...     -> paginated {total, items}
- *   GET /api/icon/item/{namespace}/{path}    -> resolved item texture PNG,
- *                                                read via IconResolver
- *                                                (walks the real model
- *                                                JSON instead of guessing
- *                                                a texture path)
+ *   GET /api/icon/item/{namespace}/{path}    -> resolved item texture PNG
  *   GET /assets/{namespace}/{path...}        -> raw model/texture bytes
+ *   GET    /api/events                       -> list of event summaries
+ *   GET    /api/events/{filename}            -> full event JSON
+ *   POST   /api/events/{filename}            -> create/overwrite event
+ *                                                (body: event JSON)
+ *   DELETE /api/events/{filename}            -> delete event
+ *   POST   /api/events/{filename}/clone      -> body: {"target":"new.yaml"}
  *
  * Registry listings are paginated and filtered server-side on purpose:
  * some modpacks register several thousand items, and shipping that
  * whole list to the browser on every keystroke is exactly the kind of
  * unnecessary load this API is meant to avoid.
  *
- * Event CRUD (creating/editing events and uploading dialogue audio from
- * the browser) is a follow-up iteration - this first pass only exposes
- * read-only registry data and assets, enough to build the
- * item/sound/advancement picker with real icons.
+ * Note: saving/deleting/cloning events here does NOT automatically
+ * reload the live dispatcher - that still requires /htzcut reload (or a
+ * "Reload" button in the editor wired to the same command) so a
+ * half-finished edit in the browser can never affect the running game
+ * before the user explicitly applies it.
  */
 public class WebEditorServer {
 
@@ -49,11 +55,13 @@ public class WebEditorServer {
 
     private final MinecraftServer server;
     private final int port;
+    private final EventEditorApi eventEditorApi;
     private HttpServer httpServer;
 
-    public WebEditorServer(MinecraftServer server, int port) {
+    public WebEditorServer(MinecraftServer server, int port, Path eventsDir) {
         this.server = server;
         this.port = port;
+        this.eventEditorApi = new EventEditorApi(eventsDir);
     }
 
     public void start() {
@@ -63,6 +71,7 @@ public class WebEditorServer {
             httpServer.createContext("/api/registries/sounds", this::handleSounds);
             httpServer.createContext("/api/registries/advancements", this::handleAdvancements);
             httpServer.createContext("/api/icon/item/", this::handleItemIcon);
+            httpServer.createContext("/api/events", this::handleEvents);
             httpServer.createContext("/assets/", this::handleAsset);
             httpServer.createContext("/", this::handleStatic);
             httpServer.setExecutor(Executors.newCachedThreadPool());
@@ -83,19 +92,19 @@ public class WebEditorServer {
 
     private void handleItems(HttpExchange exchange) throws IOException {
         Map<String, String> query = parseQuery(exchange);
-        writeJson(exchange, RegistryApi.items(
+        writeJson(exchange, 200, RegistryApi.items(
                 query.get("q"), pageOf(query), sizeOf(query)).toString());
     }
 
     private void handleSounds(HttpExchange exchange) throws IOException {
         Map<String, String> query = parseQuery(exchange);
-        writeJson(exchange, RegistryApi.sounds(
+        writeJson(exchange, 200, RegistryApi.sounds(
                 query.get("q"), pageOf(query), sizeOf(query)).toString());
     }
 
     private void handleAdvancements(HttpExchange exchange) throws IOException {
         Map<String, String> query = parseQuery(exchange);
-        writeJson(exchange, RegistryApi.advancements(
+        writeJson(exchange, 200, RegistryApi.advancements(
                 server, query.get("q"), pageOf(query), sizeOf(query)).toString());
     }
 
@@ -125,6 +134,111 @@ public class WebEditorServer {
             streamClasspathResource(exchange, texturePath.get());
         } finally {
             exchange.close();
+        }
+    }
+
+    /**
+     * Routes every /api/events... request by method + remaining path
+     * segments, since the JDK's HttpServer has no built-in per-verb
+     * routing:
+     *   GET  /api/events                  -> list()
+     *   GET  /api/events/{file}           -> get(file)
+     *   POST /api/events/{file}           -> save(file, body)
+     *   POST /api/events/{file}/clone     -> clone(file, body.target)
+     *   DELETE /api/events/{file}         -> delete(file)
+     */
+    private void handleEvents(HttpExchange exchange) throws IOException {
+        try {
+            String path = exchange.getRequestURI().getPath();
+            String remainder = path.length() > "/api/events".length()
+                    ? path.substring("/api/events".length() + 1)
+                    : "";
+            String method = exchange.getRequestMethod();
+
+            if (remainder.isEmpty()) {
+                if ("GET".equals(method)) {
+                    writeJson(exchange, 200, eventEditorApi.list().toString());
+                } else {
+                    exchange.sendResponseHeaders(405, -1);
+                }
+                return;
+            }
+
+            if (remainder.endsWith("/clone")) {
+                String filename = remainder.substring(0, remainder.length() - "/clone".length());
+                if (!"POST".equals(method)) {
+                    exchange.sendResponseHeaders(405, -1);
+                    return;
+                }
+                handleCloneEvent(exchange, filename);
+                return;
+            }
+
+            String filename = remainder;
+            if (!eventEditorApi.isValidFilename(filename)) {
+                writeJson(exchange, 400, errorJson("Invalid filename."));
+                return;
+            }
+
+            switch (method) {
+                case "GET" -> {
+                    JsonObject result = eventEditorApi.get(filename);
+                    if (result == null) {
+                        exchange.sendResponseHeaders(404, -1);
+                    } else {
+                        writeJson(exchange, 200, result.toString());
+                    }
+                }
+                case "POST" -> {
+                    String body = readBody(exchange);
+                    try {
+                        eventEditorApi.save(filename, body);
+                        writeJson(exchange, 200, "{\"ok\":true}");
+                    } catch (IllegalArgumentException e) {
+                        writeJson(exchange, 400, errorJson(e.getMessage()));
+                    }
+                }
+                case "DELETE" -> {
+                    boolean deleted = eventEditorApi.delete(filename);
+                    if (deleted) {
+                        writeJson(exchange, 200, "{\"ok\":true}");
+                    } else {
+                        exchange.sendResponseHeaders(404, -1);
+                    }
+                }
+                default -> exchange.sendResponseHeaders(405, -1);
+            }
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private void handleCloneEvent(HttpExchange exchange, String sourceFilename) throws IOException {
+        if (!eventEditorApi.isValidFilename(sourceFilename)) {
+            writeJson(exchange, 400, errorJson("Invalid source filename."));
+            return;
+        }
+
+        String body = readBody(exchange);
+        JsonObject requestJson;
+        try {
+            requestJson = com.google.gson.JsonParser.parseString(body).getAsJsonObject();
+        } catch (Exception e) {
+            writeJson(exchange, 400, errorJson("Expected JSON body with a \"target\" filename."));
+            return;
+        }
+
+        String target = requestJson.has("target") ? requestJson.get("target").getAsString() : null;
+        if (target == null || !eventEditorApi.isValidFilename(target)) {
+            writeJson(exchange, 400, errorJson("Invalid or missing target filename."));
+            return;
+        }
+
+        boolean cloned = eventEditorApi.clone(sourceFilename, target);
+        if (cloned) {
+            writeJson(exchange, 200, "{\"ok\":true}");
+        } else {
+            exchange.sendResponseHeaders(404, -1);
         }
     }
 
@@ -173,16 +287,24 @@ public class WebEditorServer {
         }
     }
 
-    private void writeJson(HttpExchange exchange, String json) throws IOException {
-        try {
-            byte[] data = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, data.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(data);
-            }
-        } finally {
-            exchange.close();
+    private String readBody(HttpExchange exchange) throws IOException {
+        try (InputStream in = exchange.getRequestBody()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private String errorJson(String message) {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("error", message);
+        return obj.toString();
+    }
+
+    private void writeJson(HttpExchange exchange, int status, String json) throws IOException {
+        byte[] data = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, data.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(data);
         }
     }
 
