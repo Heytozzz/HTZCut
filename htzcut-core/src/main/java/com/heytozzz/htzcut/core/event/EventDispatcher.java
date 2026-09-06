@@ -5,8 +5,10 @@ import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
 import com.heytozzz.htzcut.core.sound.SoundSink;
+import com.heytozzz.htzcut.core.subtitle.SubtitleBoxEffect;
 import com.heytozzz.htzcut.core.subtitle.SubtitlePosition;
 import com.heytozzz.htzcut.core.subtitle.SubtitleSink;
+import com.heytozzz.htzcut.core.subtitle.SubtitleTextEffect;
 import com.heytozzz.htzcut.core.trigger.HTZTriggerFired;
 
 import java.util.List;
@@ -25,10 +27,13 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class EventDispatcher {
 
-    // Used when a dialogue action sets a subtitle but no explicit
-    // subtitle_duration_seconds - long enough to read a short line
-    // without needing every event author to specify it.
-    private static final double DEFAULT_SUBTITLE_DURATION_SECONDS = 4.0;
+    // Used when a dialogue action sets a subtitle but leaves these
+    // fields unset - long enough to read a short line without needing
+    // every event author to specify all of them.
+    private static final SubtitleBoxEffect DEFAULT_BOX_EFFECT = SubtitleBoxEffect.INSTANT;
+    private static final SubtitleTextEffect DEFAULT_TEXT_EFFECT = SubtitleTextEffect.INSTANT;
+    private static final double DEFAULT_TEXT_DURATION_SECONDS = 1.5;
+    private static final double DEFAULT_HOLD_SECONDS = 4.0;
     private static final SubtitlePosition DEFAULT_SUBTITLE_POSITION = SubtitlePosition.BOTTOM;
 
     private final List<EventDefinition> definitions;
@@ -120,13 +125,22 @@ public class EventDispatcher {
             return;
         }
 
-        double duration = action.getSubtitleDurationSeconds() != null
-                ? action.getSubtitleDurationSeconds()
-                : DEFAULT_SUBTITLE_DURATION_SECONDS;
+        double duration = action.getSubtitleTextDurationSeconds() != null
+                ? action.getSubtitleTextDurationSeconds()
+                : DEFAULT_TEXT_DURATION_SECONDS;
+        double hold = action.getSubtitleHoldSeconds() != null
+                ? action.getSubtitleHoldSeconds()
+                : DEFAULT_HOLD_SECONDS;
+        SubtitleBoxEffect boxEffect = action.getSubtitleBoxEffect() != null
+                ? action.getSubtitleBoxEffect()
+                : DEFAULT_BOX_EFFECT;
+        SubtitleTextEffect textEffect = action.getSubtitleTextEffect() != null
+                ? action.getSubtitleTextEffect()
+                : DEFAULT_TEXT_EFFECT;
         SubtitlePosition position = action.getSubtitlePosition() != null
                 ? action.getSubtitlePosition()
                 : DEFAULT_SUBTITLE_POSITION;
 
-        subtitleSink.showSubtitle(playerId, subtitle, duration, position);
+        subtitleSink.showSubtitle(playerId, subtitle, boxEffect, textEffect, duration, hold, position);
     }
 }

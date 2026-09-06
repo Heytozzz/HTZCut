@@ -1,7 +1,9 @@
 package com.heytozzz.htzcut.neoforge.subtitle;
 
+import com.heytozzz.htzcut.core.subtitle.SubtitleBoxEffect;
 import com.heytozzz.htzcut.core.subtitle.SubtitlePosition;
 import com.heytozzz.htzcut.core.subtitle.SubtitleSink;
+import com.heytozzz.htzcut.core.subtitle.SubtitleTextEffect;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
 import com.heytozzz.htzcut.neoforge.network.ShowSubtitlePayload;
 import net.minecraft.server.MinecraftServer;
@@ -28,15 +30,27 @@ public class NeoForgeSubtitleSink implements SubtitleSink {
     }
 
     @Override
-    public void showSubtitle(UUID playerId, String text, double durationSeconds, SubtitlePosition position) {
+    public void showSubtitle(UUID playerId,
+                              String text,
+                              SubtitleBoxEffect boxEffect,
+                              SubtitleTextEffect textEffect,
+                              double textDurationSeconds,
+                              double holdSeconds,
+                              SubtitlePosition position) {
         ServerPlayer player = server.getPlayerList().getPlayer(playerId);
         if (player == null) {
             HTZLog.warn("Tried to show a subtitle to an offline player: " + playerId);
             return;
         }
 
-        int durationTicks = Math.max(1, (int) Math.round(durationSeconds * TICKS_PER_SECOND));
-        PacketDistributor.sendToPlayer(
-                player, new ShowSubtitlePayload(text, durationTicks, position.name()));
+        int textDurationTicks = toTicks(textDurationSeconds);
+        int holdTicks = toTicks(holdSeconds);
+
+        PacketDistributor.sendToPlayer(player, new ShowSubtitlePayload(
+                text, boxEffect.name(), textEffect.name(), textDurationTicks, holdTicks, position.name()));
+    }
+
+    private static int toTicks(double seconds) {
+        return Math.max(0, (int) Math.round(seconds * TICKS_PER_SECOND));
     }
 }

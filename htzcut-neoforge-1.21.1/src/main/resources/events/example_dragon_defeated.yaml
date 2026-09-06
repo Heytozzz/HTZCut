@@ -11,11 +11,30 @@
 #                Voice Chat when available, or HTZCut's embedded HTTP
 #                server as a fallback - just drop the file in, no
 #                transcoding step to run manually). Optionally also
-#                shows a subtitle box while it plays:
-#                  subtitle:                  the line to display
-#                  subtitle_duration_seconds: how long it stays up
-#                                              (defaults to 4 seconds)
-#                  subtitle_position:         "bottom" (default) or "top"
+#                shows a subtitle box while it plays, in three phases:
+#                  1. the box appears (subtitle_box_effect)
+#                  2. the text appears (subtitle_text_effect), over
+#                     subtitle_text_duration_seconds - either an
+#                     entrance animation of the full line, or a
+#                     progressive typewriter reveal
+#                  3. everything stays up for subtitle_hold_seconds,
+#                     then disappears
+#                Fields:
+#                  subtitle:                       the line to display
+#                  subtitle_box_effect:             instant (default),
+#                                                    fade_in, bounce,
+#                                                    slide_top,
+#                                                    slide_bottom,
+#                                                    slide_left,
+#                                                    slide_right
+#                  subtitle_text_effect:            same options as
+#                                                    above, plus
+#                                                    typewriter_letters
+#                                                    and typewriter_words
+#                  subtitle_text_duration_seconds:  defaults to 1.5
+#                  subtitle_hold_seconds:           defaults to 4
+#                  subtitle_position:               bottom (default) or
+#                                                    top
 #                Leaving subtitle unset skips the box entirely.
 
 id: "welcome_dragon_slain"
@@ -35,7 +54,10 @@ actions:
   - type: dialogue
     audio: "dragon_defeated.ogg"
     subtitle: "At last... the dragon falls."
-    subtitle_duration_seconds: 5
+    subtitle_box_effect: bounce
+    subtitle_text_effect: typewriter_letters
+    subtitle_text_duration_seconds: 2
+    subtitle_hold_seconds: 3
     subtitle_position: bottom
 
 conditions:

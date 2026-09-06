@@ -1,7 +1,9 @@
 package com.heytozzz.htzcut.core.config;
 
 import com.heytozzz.htzcut.core.action.ActionType;
+import com.heytozzz.htzcut.core.subtitle.SubtitleBoxEffect;
 import com.heytozzz.htzcut.core.subtitle.SubtitlePosition;
+import com.heytozzz.htzcut.core.subtitle.SubtitleTextEffect;
 import com.heytozzz.htzcut.core.trigger.TriggerType;
 
 import java.util.List;
@@ -78,9 +80,10 @@ public class EventDefinition {
      * documented per ActionType:
      *   SOUND     -> sound
      *   NARRATION -> textKey, fallbackLocale
-     *   DIALOGUE  -> audio, and optionally subtitle, subtitleDurationSeconds,
-     *                subtitlePosition (subtitle box is skipped entirely if
-     *                subtitle is left unset)
+     *   DIALOGUE  -> audio, and optionally subtitle + subtitleBoxEffect,
+     *                subtitleTextEffect, subtitleTextDurationSeconds,
+     *                subtitleHoldSeconds, subtitlePosition (subtitle box
+     *                is skipped entirely if subtitle is left unset)
      */
     public static class ActionConfig {
         private ActionType type;
@@ -89,7 +92,10 @@ public class EventDefinition {
         private String fallbackLocale;
         private String audio;
         private String subtitle;
-        private Double subtitleDurationSeconds;
+        private SubtitleBoxEffect subtitleBoxEffect;
+        private SubtitleTextEffect subtitleTextEffect;
+        private Double subtitleTextDurationSeconds;
+        private Double subtitleHoldSeconds;
         private SubtitlePosition subtitlePosition;
 
         public ActionType getType() {
@@ -140,12 +146,36 @@ public class EventDefinition {
             this.subtitle = subtitle;
         }
 
-        public Double getSubtitleDurationSeconds() {
-            return subtitleDurationSeconds;
+        public SubtitleBoxEffect getSubtitleBoxEffect() {
+            return subtitleBoxEffect;
         }
 
-        public void setSubtitleDurationSeconds(Double subtitleDurationSeconds) {
-            this.subtitleDurationSeconds = subtitleDurationSeconds;
+        public void setSubtitleBoxEffect(SubtitleBoxEffect subtitleBoxEffect) {
+            this.subtitleBoxEffect = subtitleBoxEffect;
+        }
+
+        public SubtitleTextEffect getSubtitleTextEffect() {
+            return subtitleTextEffect;
+        }
+
+        public void setSubtitleTextEffect(SubtitleTextEffect subtitleTextEffect) {
+            this.subtitleTextEffect = subtitleTextEffect;
+        }
+
+        public Double getSubtitleTextDurationSeconds() {
+            return subtitleTextDurationSeconds;
+        }
+
+        public void setSubtitleTextDurationSeconds(Double subtitleTextDurationSeconds) {
+            this.subtitleTextDurationSeconds = subtitleTextDurationSeconds;
+        }
+
+        public Double getSubtitleHoldSeconds() {
+            return subtitleHoldSeconds;
+        }
+
+        public void setSubtitleHoldSeconds(Double subtitleHoldSeconds) {
+            this.subtitleHoldSeconds = subtitleHoldSeconds;
         }
 
         public SubtitlePosition getSubtitlePosition() {

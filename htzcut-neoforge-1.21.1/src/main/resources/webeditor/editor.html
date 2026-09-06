@@ -80,7 +80,7 @@ function blankEvent() {
 function blankAction(type) {
   if (type === "SOUND") return { type: "SOUND", sound: "" };
   if (type === "NARRATION") return { type: "NARRATION", textKey: "", fallbackLocale: "en_us" };
-  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleDurationSeconds: "", subtitlePosition: "BOTTOM" };
+  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleBoxEffect: "INSTANT", subtitleTextEffect: "INSTANT", subtitleTextDurationSeconds: "", subtitleHoldSeconds: "", subtitlePosition: "BOTTOM" };
 }
 
 // ---------- Event list ----------
@@ -222,8 +222,13 @@ function toYamlPreview(def) {
         out += `    audio: "${esc(a.audio)}"\n`;
         if (a.subtitle) {
           out += `    subtitle: "${esc(a.subtitle)}"\n`;
-          if (a.subtitleDurationSeconds !== "" && a.subtitleDurationSeconds != null) {
-            out += `    subtitle_duration_seconds: ${a.subtitleDurationSeconds}\n`;
+          if (a.subtitleBoxEffect) out += `    subtitle_box_effect: ${a.subtitleBoxEffect.toLowerCase()}\n`;
+          if (a.subtitleTextEffect) out += `    subtitle_text_effect: ${a.subtitleTextEffect.toLowerCase()}\n`;
+          if (a.subtitleTextDurationSeconds !== "" && a.subtitleTextDurationSeconds != null) {
+            out += `    subtitle_text_duration_seconds: ${a.subtitleTextDurationSeconds}\n`;
+          }
+          if (a.subtitleHoldSeconds !== "" && a.subtitleHoldSeconds != null) {
+            out += `    subtitle_hold_seconds: ${a.subtitleHoldSeconds}\n`;
           }
           if (a.subtitlePosition) out += `    subtitle_position: ${a.subtitlePosition.toLowerCase()}\n`;
         }
@@ -430,20 +435,31 @@ function renderActionNode(action, index) {
       <div class="field"><label>text_key</label><input type="text" id="f-textkey" value="${escapeHtml(action.textKey || "")}"></div>
       <div class="field"><label>fallback_locale</label><input type="text" id="f-fallback" value="${escapeHtml(action.fallbackLocale || "")}"></div>`;
   } else if (action.type === "DIALOGUE") {
+    const boxEffects = ["INSTANT", "FADE_IN", "BOUNCE", "SLIDE_TOP", "SLIDE_BOTTOM", "SLIDE_LEFT", "SLIDE_RIGHT"];
+    const textEffects = [...boxEffects, "TYPEWRITER_LETTERS", "TYPEWRITER_WORDS"];
+    const opt = (list, current) => list.map(v =>
+      `<option value="${v}" ${(current || "INSTANT") === v ? "selected" : ""}>${v.toLowerCase()}</option>`).join("");
+
     fieldsHtml = `
       <div class="field"><label>archivo de audio (.ogg en config/htzcut/audios/dialogues/)</label>
       <input type="text" id="f-audio" value="${escapeHtml(action.audio || "")}"></div>
       <div class="field"><label>subtítulo (opcional)</label>
       <input type="text" id="f-subtitle" value="${escapeHtml(action.subtitle || "")}"></div>
+      <div class="field"><label>aparición de la caja</label>
+      <select id="f-box-effect">${opt(boxEffects, action.subtitleBoxEffect)}</select></div>
+      <div class="field"><label>aparición del texto</label>
+      <select id="f-text-effect">${opt(textEffects, action.subtitleTextEffect)}</select></div>
       <div class="field-row">
-        <div class="field" style="flex:1"><label>duración (segundos)</label>
-        <input type="text" id="f-subtitle-duration" value="${escapeHtml(action.subtitleDurationSeconds != null ? action.subtitleDurationSeconds : "")}" placeholder="4"></div>
-        <div class="field" style="flex:1"><label>posición</label>
-        <select id="f-subtitle-position">
-          <option value="BOTTOM" ${(action.subtitlePosition || "BOTTOM") === "BOTTOM" ? "selected" : ""}>bottom</option>
-          <option value="TOP" ${action.subtitlePosition === "TOP" ? "selected" : ""}>top</option>
-        </select></div>
-      </div>`;
+        <div class="field" style="flex:1"><label>tiempo en terminar de escribir (s)</label>
+        <input type="text" id="f-text-duration" value="${escapeHtml(action.subtitleTextDurationSeconds != null ? action.subtitleTextDurationSeconds : "")}" placeholder="1.5"></div>
+        <div class="field" style="flex:1"><label>tiempo visible tras terminar (s)</label>
+        <input type="text" id="f-hold" value="${escapeHtml(action.subtitleHoldSeconds != null ? action.subtitleHoldSeconds : "")}" placeholder="4"></div>
+      </div>
+      <div class="field"><label>posición</label>
+      <select id="f-subtitle-position">
+        <option value="BOTTOM" ${(action.subtitlePosition || "BOTTOM") === "BOTTOM" ? "selected" : ""}>bottom</option>
+        <option value="TOP" ${action.subtitlePosition === "TOP" ? "selected" : ""}>top</option>
+      </select></div>`;
   }
 
   node.innerHTML = `
@@ -480,9 +496,16 @@ function renderActionNode(action, index) {
   } else if (action.type === "DIALOGUE") {
     node.querySelector("#f-audio").addEventListener("input", e => { action.audio = e.target.value; updatePreview(); });
     node.querySelector("#f-subtitle").addEventListener("input", e => { action.subtitle = e.target.value; updatePreview(); });
-    node.querySelector("#f-subtitle-duration").addEventListener("input", e => {
+    node.querySelector("#f-box-effect").addEventListener("change", e => { action.subtitleBoxEffect = e.target.value; updatePreview(); });
+    node.querySelector("#f-text-effect").addEventListener("change", e => { action.subtitleTextEffect = e.target.value; updatePreview(); });
+    node.querySelector("#f-text-duration").addEventListener("input", e => {
       const v = e.target.value.trim();
-      action.subtitleDurationSeconds = v === "" ? "" : Number(v);
+      action.subtitleTextDurationSeconds = v === "" ? "" : Number(v);
+      updatePreview();
+    });
+    node.querySelector("#f-hold").addEventListener("input", e => {
+      const v = e.target.value.trim();
+      action.subtitleHoldSeconds = v === "" ? "" : Number(v);
       updatePreview();
     });
     node.querySelector("#f-subtitle-position").addEventListener("change", e => { action.subtitlePosition = e.target.value; updatePreview(); });

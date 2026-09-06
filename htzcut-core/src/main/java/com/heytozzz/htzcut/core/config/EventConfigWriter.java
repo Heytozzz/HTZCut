@@ -51,9 +51,21 @@ public class EventConfigWriter {
                         sb.append("    audio: \"").append(escape(action.getAudio())).append("\"\n");
                         if (action.getSubtitle() != null && !action.getSubtitle().isBlank()) {
                             sb.append("    subtitle: \"").append(escape(action.getSubtitle())).append("\"\n");
-                            if (action.getSubtitleDurationSeconds() != null) {
-                                sb.append("    subtitle_duration_seconds: ")
-                                        .append(action.getSubtitleDurationSeconds()).append("\n");
+                            if (action.getSubtitleBoxEffect() != null) {
+                                sb.append("    subtitle_box_effect: ")
+                                        .append(lower(action.getSubtitleBoxEffect())).append("\n");
+                            }
+                            if (action.getSubtitleTextEffect() != null) {
+                                sb.append("    subtitle_text_effect: ")
+                                        .append(lower(action.getSubtitleTextEffect())).append("\n");
+                            }
+                            if (action.getSubtitleTextDurationSeconds() != null) {
+                                sb.append("    subtitle_text_duration_seconds: ")
+                                        .append(action.getSubtitleTextDurationSeconds()).append("\n");
+                            }
+                            if (action.getSubtitleHoldSeconds() != null) {
+                                sb.append("    subtitle_hold_seconds: ")
+                                        .append(action.getSubtitleHoldSeconds()).append("\n");
                             }
                             if (action.getSubtitlePosition() != null) {
                                 sb.append("    subtitle_position: ")
@@ -122,10 +134,15 @@ public class EventConfigWriter {
                     throw new IllegalArgumentException(
                             "Event '" + eventId + "' has a dialogue action with no audio file set.");
                 }
-                if (action.getSubtitleDurationSeconds() != null && action.getSubtitleDurationSeconds() <= 0) {
+                if (action.getSubtitleTextDurationSeconds() != null && action.getSubtitleTextDurationSeconds() < 0) {
                     throw new IllegalArgumentException(
-                            "Event '" + eventId + "' has a dialogue action with a non-positive "
-                                    + "subtitle_duration_seconds.");
+                            "Event '" + eventId + "' has a dialogue action with a negative "
+                                    + "subtitle_text_duration_seconds.");
+                }
+                if (action.getSubtitleHoldSeconds() != null && action.getSubtitleHoldSeconds() < 0) {
+                    throw new IllegalArgumentException(
+                            "Event '" + eventId + "' has a dialogue action with a negative "
+                                    + "subtitle_hold_seconds.");
                 }
             }
         }
