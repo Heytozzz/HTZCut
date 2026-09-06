@@ -15,7 +15,8 @@
   .toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 16px; }
   .toolbar button { padding: 4px 10px; border-radius: 4px; border: 1px solid #444; background: #2b2d31; color: #eee; cursor: pointer; }
   .toolbar button.active { background: #4c7bd9; }
-  #results { padding: 8px 16px; }
+  .toolbar button:disabled { opacity: .4; cursor: default; }
+  #results { padding: 8px 16px; min-height: 300px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
   .grid .entry { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 6px; cursor: pointer; }
   .grid .entry:hover { background: #33353a; }
@@ -43,74 +44,56 @@
 <div class="toolbar">
   <button id="view-grid" class="active">Rejilla</button>
   <button id="view-list">Lista</button>
-  <span id="count" style="opacity:.6; font-size: 12px;"></span>
+  <span style="flex:1"></span>
+  <button id="prev-page">&laquo; Anterior</button>
+  <span id="page-info" style="font-size: 12px; opacity: .8;"></span>
+  <button id="next-page">Siguiente &raquo;</button>
 </div>
 
 <div id="results"></div>
 
 <script>
-// --- State ---
+const PAGE_SIZE = 96;
+
 let currentTab = "items";
 let currentView = "grid";
-let data = { items: [], sounds: [], advancements: [] };
+let currentPage = 0;
+let searchDebounce = null;
 
-// --- Fetch registries from the server on load ---
-async function loadAll() {
-  const [items, sounds, advancements] = await Promise.all([
-    fetch("/api/registries/items").then(r => r.json()),
-    fetch("/api/registries/sounds").then(r => r.json()),
-    fetch("/api/registries/advancements").then(r => r.json()),
-  ]);
-  data.items = items;
-  data.sounds = sounds;
-  data.advancements = advancements;
-  render();
+function iconUrlFor(entryId) {
+  const [namespace, path] = entryId.split(":");
+  return `/api/icon/item/${namespace}/${path}`;
 }
 
-// Best-effort guess at an item's flat texture path. Covers the vast
-// majority of vanilla and modded items; a minority with non-standard
-// model/texture layouts may show no icon - a known limitation of this
-// simple heuristic-based approach (no real model resolution yet).
-function itemIconUrl(itemId) {
-  const [namespace, path] = itemId.split(":");
-  return `/assets/${namespace}/textures/item/${path}.png`;
-}
-
-function matchesSearch(id, query) {
-  return !query || id.toLowerCase().includes(query.toLowerCase());
-}
-
-function render() {
+async function fetchPage() {
   const query = document.getElementById("search").value;
+  const params = new URLSearchParams({ q: query, page: currentPage, size: PAGE_SIZE });
+  const res = await fetch(`/api/registries/${currentTab}?${params}`);
+  return res.json();
+}
+
+async function render() {
   const container = document.getElementById("results");
   container.className = currentView;
+
+  const data = await fetchPage();
   container.innerHTML = "";
 
-  let entries = [];
-  if (currentTab === "items") {
-    entries = data.items
-      .filter(e => matchesSearch(e.id, query))
-      .map(e => ({ id: e.id, icon: itemIconUrl(e.id) }));
-  } else if (currentTab === "sounds") {
-    entries = data.sounds
-      .filter(e => matchesSearch(e.id, query))
-      .map(e => ({ id: e.id, icon: null }));
-  } else if (currentTab === "advancements") {
-    entries = data.advancements
-      .filter(e => matchesSearch(e.id, query))
-      .map(e => ({ id: e.id, icon: e.icon ? itemIconUrl(e.icon) : null }));
-  }
-
-  document.getElementById("count").textContent = entries.length + " resultado(s)";
-
-  for (const entry of entries) {
+  for (const entry of data.items) {
     const el = document.createElement("div");
     el.className = "entry";
     el.title = entry.id;
 
-    if (entry.icon) {
+    let iconUrl = null;
+    if (currentTab === "items") {
+      iconUrl = iconUrlFor(entry.id);
+    } else if (currentTab === "advancements" && entry.icon) {
+      iconUrl = iconUrlFor(entry.icon);
+    }
+
+    if (iconUrl) {
       const img = document.createElement("img");
-      img.src = entry.icon;
+      img.src = iconUrl;
       img.onerror = () => { img.replaceWith(makeNoIcon()); };
       el.appendChild(img);
     } else {
@@ -122,7 +105,7 @@ function render() {
     el.appendChild(label);
 
     el.addEventListener("click", () => {
-      // For now: just copy the id to the clipboard, since this is a
+      // For now: copy the id to the clipboard, since this is a
       // standalone picker page - wiring "selecting a value fills in the
       // event YAML field" comes with the full event editor UI.
       navigator.clipboard?.writeText(entry.id);
@@ -132,6 +115,12 @@ function render() {
 
     container.appendChild(el);
   }
+
+  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  document.getElementById("page-info").textContent =
+      `Página ${currentPage + 1} de ${totalPages} (${data.total} resultado(s))`;
+  document.getElementById("prev-page").disabled = currentPage <= 0;
+  document.getElementById("next-page").disabled = currentPage >= totalPages - 1;
 }
 
 function makeNoIcon() {
@@ -145,6 +134,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     tab.classList.add("active");
     currentTab = tab.dataset.tab;
+    currentPage = 0;
     render();
   });
 });
@@ -161,9 +151,25 @@ document.getElementById("view-list").addEventListener("click", () => {
   document.getElementById("view-grid").classList.remove("active");
   render();
 });
-document.getElementById("search").addEventListener("input", render);
 
-loadAll();
+document.getElementById("search").addEventListener("input", () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    currentPage = 0;
+    render();
+  }, 250); // avoid hammering the server on every keystroke
+});
+
+document.getElementById("prev-page").addEventListener("click", () => {
+  currentPage = Math.max(0, currentPage - 1);
+  render();
+});
+document.getElementById("next-page").addEventListener("click", () => {
+  currentPage += 1;
+  render();
+});
+
+render();
 </script>
 
 </body>

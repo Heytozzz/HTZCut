@@ -9,7 +9,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 
 /**
@@ -18,28 +22,30 @@ import java.util.concurrent.Executors;
  * both use the same lightweight JDK HttpServer approach.
  *
  * Endpoints:
- *   GET /                              -> static editor page (bundled)
- *   GET /api/registries/items          -> JSON array of all item ids
- *   GET /api/registries/sounds         -> JSON array of all sound ids
- *   GET /api/registries/advancements   -> JSON array of {id, icon}
- *   GET /assets/{namespace}/{path...}  -> raw model/texture bytes, read
- *                                         straight from the classpath
- *                                         (mod jars still contain their
- *                                         client assets even on a
- *                                         dedicated server - we just
- *                                         don't normally load them into
- *                                         a ResourceManager). Used by
- *                                         Deepslate in the browser to
- *                                         render real 3D item previews
- *                                         without needing a running
- *                                         Minecraft client anywhere.
+ *   GET /                                    -> static editor page
+ *   GET /api/registries/items?q=&page=&size= -> paginated {total, items}
+ *   GET /api/registries/sounds?q=&page=&size=-> paginated {total, items}
+ *   GET /api/registries/advancements?...     -> paginated {total, items}
+ *   GET /api/icon/item/{namespace}/{path}    -> resolved item texture PNG,
+ *                                                read via IconResolver
+ *                                                (walks the real model
+ *                                                JSON instead of guessing
+ *                                                a texture path)
+ *   GET /assets/{namespace}/{path...}        -> raw model/texture bytes
+ *
+ * Registry listings are paginated and filtered server-side on purpose:
+ * some modpacks register several thousand items, and shipping that
+ * whole list to the browser on every keystroke is exactly the kind of
+ * unnecessary load this API is meant to avoid.
  *
  * Event CRUD (creating/editing events and uploading dialogue audio from
  * the browser) is a follow-up iteration - this first pass only exposes
- * read-only registry data and static assets, enough to build the
- * item/sound/advancement picker with real 3D previews.
+ * read-only registry data and assets, enough to build the
+ * item/sound/advancement picker with real icons.
  */
 public class WebEditorServer {
+
+    private static final int DEFAULT_PAGE_SIZE = 96;
 
     private final MinecraftServer server;
     private final int port;
@@ -56,6 +62,7 @@ public class WebEditorServer {
             httpServer.createContext("/api/registries/items", this::handleItems);
             httpServer.createContext("/api/registries/sounds", this::handleSounds);
             httpServer.createContext("/api/registries/advancements", this::handleAdvancements);
+            httpServer.createContext("/api/icon/item/", this::handleItemIcon);
             httpServer.createContext("/assets/", this::handleAsset);
             httpServer.createContext("/", this::handleStatic);
             httpServer.setExecutor(Executors.newCachedThreadPool());
@@ -75,38 +82,60 @@ public class WebEditorServer {
     }
 
     private void handleItems(HttpExchange exchange) throws IOException {
-        writeJson(exchange, RegistryApi.items().toString());
+        Map<String, String> query = parseQuery(exchange);
+        writeJson(exchange, RegistryApi.items(
+                query.get("q"), pageOf(query), sizeOf(query)).toString());
     }
 
     private void handleSounds(HttpExchange exchange) throws IOException {
-        writeJson(exchange, RegistryApi.sounds().toString());
+        Map<String, String> query = parseQuery(exchange);
+        writeJson(exchange, RegistryApi.sounds(
+                query.get("q"), pageOf(query), sizeOf(query)).toString());
     }
 
     private void handleAdvancements(HttpExchange exchange) throws IOException {
-        writeJson(exchange, RegistryApi.advancements(server).toString());
+        Map<String, String> query = parseQuery(exchange);
+        writeJson(exchange, RegistryApi.advancements(
+                server, query.get("q"), pageOf(query), sizeOf(query)).toString());
     }
 
     /**
-     * Serves a raw asset (model JSON or texture PNG) straight from
-     * whichever mod jar declares it, by classpath lookup - e.g.
-     * "/assets/minecraft/models/item/diamond.json" reads the classpath
-     * resource "assets/minecraft/models/item/diamond.json".
+     * "/api/icon/item/{namespace}/{path}" -> resolves the item's real
+     * texture via its model JSON (see IconResolver) and streams it back,
+     * rather than the browser guessing a texture path itself.
      */
-    private void handleAsset(HttpExchange exchange) throws IOException {
-        String path = exchange.getRequestURI().getPath().substring(1); // drop leading '/'
+    private void handleItemIcon(HttpExchange exchange) throws IOException {
+        try {
+            String remainder = exchange.getRequestURI().getPath().substring("/api/icon/item/".length());
+            int slash = remainder.indexOf('/');
+            if (slash < 0) {
+                exchange.sendResponseHeaders(400, -1);
+                return;
+            }
 
-        try (InputStream in = WebEditorServer.class.getClassLoader().getResourceAsStream(path)) {
-            if (in == null) {
+            String namespace = remainder.substring(0, slash);
+            String itemPath = remainder.substring(slash + 1);
+
+            Optional<String> texturePath = IconResolver.resolveTexturePath(namespace, itemPath);
+            if (texturePath.isEmpty()) {
                 exchange.sendResponseHeaders(404, -1);
                 return;
             }
 
-            byte[] data = in.readAllBytes();
-            exchange.getResponseHeaders().add("Content-Type", contentTypeFor(path));
-            exchange.sendResponseHeaders(200, data.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(data);
-            }
+            streamClasspathResource(exchange, texturePath.get());
+        } finally {
+            exchange.close();
+        }
+    }
+
+    /**
+     * Serves a raw asset (model JSON or texture PNG) straight from
+     * whichever mod jar declares it, by classpath lookup.
+     */
+    private void handleAsset(HttpExchange exchange) throws IOException {
+        String path = exchange.getRequestURI().getPath().substring(1); // drop leading '/'
+        try {
+            streamClasspathResource(exchange, path);
         } finally {
             exchange.close();
         }
@@ -121,22 +150,26 @@ public class WebEditorServer {
         if (path.equals("/")) {
             path = "/index.html";
         }
+        try {
+            streamClasspathResource(exchange, "webeditor" + path);
+        } finally {
+            exchange.close();
+        }
+    }
 
-        String resourcePath = "webeditor" + path;
-        try (InputStream in = WebEditorServer.class.getClassLoader().getResourceAsStream(resourcePath)) {
+    private void streamClasspathResource(HttpExchange exchange, String classpathResource) throws IOException {
+        try (InputStream in = WebEditorServer.class.getClassLoader().getResourceAsStream(classpathResource)) {
             if (in == null) {
                 exchange.sendResponseHeaders(404, -1);
                 return;
             }
 
             byte[] data = in.readAllBytes();
-            exchange.getResponseHeaders().add("Content-Type", contentTypeFor(resourcePath));
+            exchange.getResponseHeaders().add("Content-Type", contentTypeFor(classpathResource));
             exchange.sendResponseHeaders(200, data.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(data);
             }
-        } finally {
-            exchange.close();
         }
     }
 
@@ -150,6 +183,41 @@ public class WebEditorServer {
             }
         } finally {
             exchange.close();
+        }
+    }
+
+    private Map<String, String> parseQuery(HttpExchange exchange) {
+        Map<String, String> result = new HashMap<>();
+        String raw = exchange.getRequestURI().getRawQuery();
+        if (raw == null || raw.isBlank()) {
+            return result;
+        }
+        for (String pair : raw.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq < 0) {
+                continue;
+            }
+            String key = URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8);
+            String value = URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+            result.put(key, value);
+        }
+        return result;
+    }
+
+    private int pageOf(Map<String, String> query) {
+        try {
+            return Math.max(0, Integer.parseInt(query.getOrDefault("page", "0")));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private int sizeOf(Map<String, String> query) {
+        try {
+            int size = Integer.parseInt(query.getOrDefault("size", String.valueOf(DEFAULT_PAGE_SIZE)));
+            return Math.min(Math.max(size, 1), 500); // clamp to avoid abuse/huge responses
+        } catch (NumberFormatException e) {
+            return DEFAULT_PAGE_SIZE;
         }
     }
 

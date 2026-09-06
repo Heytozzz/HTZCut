@@ -9,6 +9,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,49 +18,57 @@ import java.util.Optional;
  * directly from the server's live registries, so anything added by
  * installed mods shows up automatically - nothing here is hardcoded to
  * vanilla content.
+ *
+ * All three listings are paginated and filtered server-side: some
+ * modpacks have several thousand items registered, and sending that
+ * whole list to the browser on every keystroke would be exactly the
+ * kind of unnecessary load/lag this API is meant to avoid.
  */
 public final class RegistryApi {
 
     private RegistryApi() {
     }
 
-    /**
-     * Every registered item, vanilla and modded. The client uses the id
-     * to fetch /assets/{namespace}/models/item/{path}.json for the 3D
-     * preview.
-     */
-    public static JsonArray items() {
+    public static JsonObject items(String query, int page, int size) {
+        List<ResourceLocation> matches = BuiltInRegistries.ITEM.keySet().stream()
+                .filter(id -> matches(id.toString(), query))
+                .sorted(Comparator.comparing(ResourceLocation::toString))
+                .toList();
+
         JsonArray array = new JsonArray();
-        for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
+        for (ResourceLocation id : page(matches, page, size)) {
             JsonObject entry = new JsonObject();
             entry.addProperty("id", id.toString());
             array.add(entry);
         }
-        return array;
+
+        return paginatedResult(array, matches.size(), page, size);
     }
 
-    /**
-     * Every registered SoundEvent, vanilla and modded (including
-     * HTZCut's own bundled UI sounds once those exist).
-     */
-    public static JsonArray sounds() {
+    public static JsonObject sounds(String query, int page, int size) {
+        List<ResourceLocation> matches = BuiltInRegistries.SOUND_EVENT.keySet().stream()
+                .filter(id -> matches(id.toString(), query))
+                .sorted(Comparator.comparing(ResourceLocation::toString))
+                .toList();
+
         JsonArray array = new JsonArray();
-        for (ResourceLocation id : BuiltInRegistries.SOUND_EVENT.keySet()) {
+        for (ResourceLocation id : page(matches, page, size)) {
             JsonObject entry = new JsonObject();
             entry.addProperty("id", id.toString());
             array.add(entry);
         }
-        return array;
+
+        return paginatedResult(array, matches.size(), page, size);
     }
 
-    /**
-     * Every advancement currently loaded (vanilla, mods, and datapacks),
-     * with the item id used as its display icon when it has one visible.
-     */
-    public static JsonArray advancements(MinecraftServer server) {
-        JsonArray array = new JsonArray();
+    public static JsonObject advancements(MinecraftServer server, String query, int page, int size) {
+        List<AdvancementHolder> matches = server.getAdvancements().getAllAdvancements().stream()
+                .filter(holder -> matches(holder.id().toString(), query))
+                .sorted(Comparator.comparing(holder -> holder.id().toString()))
+                .toList();
 
-        for (AdvancementHolder holder : server.getAdvancements().getAllAdvancements()) {
+        JsonArray array = new JsonArray();
+        for (AdvancementHolder holder : page(matches, page, size)) {
             Optional<DisplayInfo> display = holder.value().display();
 
             JsonObject entry = new JsonObject();
@@ -73,6 +83,25 @@ public final class RegistryApi {
             array.add(entry);
         }
 
-        return array;
+        return paginatedResult(array, matches.size(), page, size);
+    }
+
+    private static boolean matches(String id, String query) {
+        return query == null || query.isBlank() || id.toLowerCase().contains(query.toLowerCase());
+    }
+
+    private static <T> List<T> page(List<T> all, int page, int size) {
+        int from = Math.min(Math.max(page, 0) * size, all.size());
+        int to = Math.min(from + size, all.size());
+        return all.subList(from, to);
+    }
+
+    private static JsonObject paginatedResult(JsonArray items, int total, int page, int size) {
+        JsonObject result = new JsonObject();
+        result.addProperty("total", total);
+        result.addProperty("page", page);
+        result.addProperty("size", size);
+        result.add("items", items);
+        return result;
     }
 }
