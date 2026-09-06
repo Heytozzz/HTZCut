@@ -47,7 +47,20 @@ public class EventConfigWriter {
                                     .append(escape(action.getFallbackLocale())).append("\"\n");
                         }
                     }
-                    case DIALOGUE -> sb.append("    audio: \"").append(escape(action.getAudio())).append("\"\n");
+                    case DIALOGUE -> {
+                        sb.append("    audio: \"").append(escape(action.getAudio())).append("\"\n");
+                        if (action.getSubtitle() != null && !action.getSubtitle().isBlank()) {
+                            sb.append("    subtitle: \"").append(escape(action.getSubtitle())).append("\"\n");
+                            if (action.getSubtitleDurationSeconds() != null) {
+                                sb.append("    subtitle_duration_seconds: ")
+                                        .append(action.getSubtitleDurationSeconds()).append("\n");
+                            }
+                            if (action.getSubtitlePosition() != null) {
+                                sb.append("    subtitle_position: ")
+                                        .append(lower(action.getSubtitlePosition())).append("\n");
+                            }
+                        }
+                    }
                 }
                 sb.append("\n");
             }
@@ -108,6 +121,11 @@ public class EventConfigWriter {
                 if (isBlank(action.getAudio())) {
                     throw new IllegalArgumentException(
                             "Event '" + eventId + "' has a dialogue action with no audio file set.");
+                }
+                if (action.getSubtitleDurationSeconds() != null && action.getSubtitleDurationSeconds() <= 0) {
+                    throw new IllegalArgumentException(
+                            "Event '" + eventId + "' has a dialogue action with a non-positive "
+                                    + "subtitle_duration_seconds.");
                 }
             }
         }

@@ -5,6 +5,8 @@ import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
 import com.heytozzz.htzcut.core.sound.SoundSink;
+import com.heytozzz.htzcut.core.subtitle.SubtitlePosition;
+import com.heytozzz.htzcut.core.subtitle.SubtitleSink;
 import com.heytozzz.htzcut.core.trigger.HTZTriggerFired;
 
 import java.util.List;
@@ -23,11 +25,18 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class EventDispatcher {
 
+    // Used when a dialogue action sets a subtitle but no explicit
+    // subtitle_duration_seconds - long enough to read a short line
+    // without needing every event author to specify it.
+    private static final double DEFAULT_SUBTITLE_DURATION_SECONDS = 4.0;
+    private static final SubtitlePosition DEFAULT_SUBTITLE_POSITION = SubtitlePosition.BOTTOM;
+
     private final List<EventDefinition> definitions;
     private final PermissionChecker permissionChecker;
     private final AudioDeliveryRouter audioDeliveryRouter;
     private final NarrationSink narrationSink;
     private final SoundSink soundSink;
+    private final SubtitleSink subtitleSink;
 
     // Tracks which (playerId, eventId) pairs have already fired, for
     // once_per_player conditions. A real implementation should persist
@@ -38,12 +47,14 @@ public class EventDispatcher {
                             PermissionChecker permissionChecker,
                             AudioDeliveryRouter audioDeliveryRouter,
                             NarrationSink narrationSink,
-                            SoundSink soundSink) {
+                            SoundSink soundSink,
+                            SubtitleSink subtitleSink) {
         this.definitions = definitions;
         this.permissionChecker = permissionChecker;
         this.audioDeliveryRouter = audioDeliveryRouter;
         this.narrationSink = narrationSink;
         this.soundSink = soundSink;
+        this.subtitleSink = subtitleSink;
     }
 
     public void onTrigger(HTZTriggerFired trigger) {
@@ -95,8 +106,27 @@ public class EventDispatcher {
                 case SOUND -> soundSink.playSound(playerId, action.getSound());
                 case NARRATION -> narrationSink.sendNarration(
                         playerId, action.getTextKey(), action.getFallbackLocale());
-                case DIALOGUE -> audioDeliveryRouter.playDialogue(playerId, action.getAudio());
+                case DIALOGUE -> {
+                    audioDeliveryRouter.playDialogue(playerId, action.getAudio());
+                    fireSubtitleIfPresent(action, playerId);
+                }
             }
         }
+    }
+
+    private void fireSubtitleIfPresent(EventDefinition.ActionConfig action, UUID playerId) {
+        String subtitle = action.getSubtitle();
+        if (subtitle == null || subtitle.isBlank()) {
+            return;
+        }
+
+        double duration = action.getSubtitleDurationSeconds() != null
+                ? action.getSubtitleDurationSeconds()
+                : DEFAULT_SUBTITLE_DURATION_SECONDS;
+        SubtitlePosition position = action.getSubtitlePosition() != null
+                ? action.getSubtitlePosition()
+                : DEFAULT_SUBTITLE_POSITION;
+
+        subtitleSink.showSubtitle(playerId, subtitle, duration, position);
     }
 }

@@ -8,6 +8,7 @@ import com.heytozzz.htzcut.core.permission.PermissionChecker;
 import com.heytozzz.htzcut.neoforge.audio.HttpCacheDeliveryChannel;
 import com.heytozzz.htzcut.neoforge.audio.HtzHttpAudioServer;
 import com.heytozzz.htzcut.neoforge.audio.SimpleVoiceChatDeliveryChannel;
+import com.heytozzz.htzcut.neoforge.client.HTZClientEvents;
 import com.heytozzz.htzcut.neoforge.command.HTZCommand;
 import com.heytozzz.htzcut.neoforge.config.EventFileManager;
 import com.heytozzz.htzcut.neoforge.config.HttpServerConfig;
@@ -17,11 +18,13 @@ import com.heytozzz.htzcut.neoforge.narration.ChatNarrationSink;
 import com.heytozzz.htzcut.neoforge.network.NetworkRegistration;
 import com.heytozzz.htzcut.neoforge.permission.PermissionCheckerFactory;
 import com.heytozzz.htzcut.neoforge.sound.VanillaSoundSink;
+import com.heytozzz.htzcut.neoforge.subtitle.NeoForgeSubtitleSink;
 import com.heytozzz.htzcut.neoforge.trigger.GameTriggerListeners;
 import com.heytozzz.htzcut.neoforge.webeditor.WebEditorConfig;
 import com.heytozzz.htzcut.neoforge.webeditor.WebEditorServer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -48,6 +51,7 @@ public class HTZCutMod {
     private AudioDeliveryRouter audioRouter;
     private ChatNarrationSink narrationSink;
     private VanillaSoundSink soundSink;
+    private NeoForgeSubtitleSink subtitleSink;
 
     public HTZCutMod(IEventBus modEventBus) {
         HTZLog.info("Initializing HTZCut...");
@@ -61,6 +65,14 @@ public class HTZCutMod {
         NeoForge.EVENT_BUS.addListener(this::onServerStarting);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
+
+        // Guarded so the subtitle HUD layer (GuiGraphics et al.) is never
+        // classloaded on a dedicated server - see NetworkRegistration for
+        // the same rule applied to payload handlers.
+        if (FMLEnvironment.dist.isClient()) {
+            modEventBus.addListener(HTZClientEvents::registerGuiLayers);
+            NeoForge.EVENT_BUS.addListener(HTZClientEvents::onClientTick);
+        }
     }
 
     private void onServerStarting(ServerStartingEvent event) {
@@ -90,6 +102,7 @@ public class HTZCutMod {
 
         narrationSink = new ChatNarrationSink(event.getServer());
         soundSink = new VanillaSoundSink(event.getServer());
+        subtitleSink = new NeoForgeSubtitleSink(event.getServer());
 
         WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
         Path eventsDir = FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("events");
@@ -127,7 +140,7 @@ public class HTZCutMod {
         HTZLog.info("Loaded " + definitions.size() + " event definition(s).");
 
         EventDispatcher dispatcher = new EventDispatcher(
-                definitions, permissionChecker, audioRouter, narrationSink, soundSink);
+                definitions, permissionChecker, audioRouter, narrationSink, soundSink, subtitleSink);
         HTZRuntime.set(dispatcher);
 
         return definitions.size();

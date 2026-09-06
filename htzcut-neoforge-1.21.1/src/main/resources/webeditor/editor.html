@@ -80,7 +80,7 @@ function blankEvent() {
 function blankAction(type) {
   if (type === "SOUND") return { type: "SOUND", sound: "" };
   if (type === "NARRATION") return { type: "NARRATION", textKey: "", fallbackLocale: "en_us" };
-  return { type: "DIALOGUE", audio: "" };
+  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleDurationSeconds: "", subtitlePosition: "BOTTOM" };
 }
 
 // ---------- Event list ----------
@@ -218,7 +218,16 @@ function toYamlPreview(def) {
         out += `    text_key: "${esc(a.textKey)}"\n`;
         if (a.fallbackLocale) out += `    fallback_locale: "${esc(a.fallbackLocale)}"\n`;
       }
-      if (a.type === "DIALOGUE") out += `    audio: "${esc(a.audio)}"\n`;
+      if (a.type === "DIALOGUE") {
+        out += `    audio: "${esc(a.audio)}"\n`;
+        if (a.subtitle) {
+          out += `    subtitle: "${esc(a.subtitle)}"\n`;
+          if (a.subtitleDurationSeconds !== "" && a.subtitleDurationSeconds != null) {
+            out += `    subtitle_duration_seconds: ${a.subtitleDurationSeconds}\n`;
+          }
+          if (a.subtitlePosition) out += `    subtitle_position: ${a.subtitlePosition.toLowerCase()}\n`;
+        }
+      }
       out += "\n";
     }
   }
@@ -423,7 +432,18 @@ function renderActionNode(action, index) {
   } else if (action.type === "DIALOGUE") {
     fieldsHtml = `
       <div class="field"><label>archivo de audio (.ogg en config/htzcut/audios/dialogues/)</label>
-      <input type="text" id="f-audio" value="${escapeHtml(action.audio || "")}"></div>`;
+      <input type="text" id="f-audio" value="${escapeHtml(action.audio || "")}"></div>
+      <div class="field"><label>subtítulo (opcional)</label>
+      <input type="text" id="f-subtitle" value="${escapeHtml(action.subtitle || "")}"></div>
+      <div class="field-row">
+        <div class="field" style="flex:1"><label>duración (segundos)</label>
+        <input type="text" id="f-subtitle-duration" value="${escapeHtml(action.subtitleDurationSeconds != null ? action.subtitleDurationSeconds : "")}" placeholder="4"></div>
+        <div class="field" style="flex:1"><label>posición</label>
+        <select id="f-subtitle-position">
+          <option value="BOTTOM" ${(action.subtitlePosition || "BOTTOM") === "BOTTOM" ? "selected" : ""}>bottom</option>
+          <option value="TOP" ${action.subtitlePosition === "TOP" ? "selected" : ""}>top</option>
+        </select></div>
+      </div>`;
   }
 
   node.innerHTML = `
@@ -459,6 +479,13 @@ function renderActionNode(action, index) {
     node.querySelector("#f-fallback").addEventListener("input", e => { action.fallbackLocale = e.target.value; updatePreview(); });
   } else if (action.type === "DIALOGUE") {
     node.querySelector("#f-audio").addEventListener("input", e => { action.audio = e.target.value; updatePreview(); });
+    node.querySelector("#f-subtitle").addEventListener("input", e => { action.subtitle = e.target.value; updatePreview(); });
+    node.querySelector("#f-subtitle-duration").addEventListener("input", e => {
+      const v = e.target.value.trim();
+      action.subtitleDurationSeconds = v === "" ? "" : Number(v);
+      updatePreview();
+    });
+    node.querySelector("#f-subtitle-position").addEventListener("change", e => { action.subtitlePosition = e.target.value; updatePreview(); });
   }
 
   node.querySelector(".remove").addEventListener("click", () => {

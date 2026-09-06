@@ -10,7 +10,13 @@
 #                config/htzcut/audios/dialogues/ (routed through Simple
 #                Voice Chat when available, or HTZCut's embedded HTTP
 #                server as a fallback - just drop the file in, no
-#                transcoding step to run manually)
+#                transcoding step to run manually). Optionally also
+#                shows a subtitle box while it plays:
+#                  subtitle:                  the line to display
+#                  subtitle_duration_seconds: how long it stays up
+#                                              (defaults to 4 seconds)
+#                  subtitle_position:         "bottom" (default) or "top"
+#                Leaving subtitle unset skips the box entirely.
 
 id: "welcome_dragon_slain"
 
@@ -28,6 +34,9 @@ actions:
 
   - type: dialogue
     audio: "dragon_defeated.ogg"
+    subtitle: "At last... the dragon falls."
+    subtitle_duration_seconds: 5
+    subtitle_position: bottom
 
 conditions:
   permission: "htzcut.trigger.dragon"

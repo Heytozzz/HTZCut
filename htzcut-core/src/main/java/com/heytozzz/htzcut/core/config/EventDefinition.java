@@ -1,6 +1,7 @@
 package com.heytozzz.htzcut.core.config;
 
 import com.heytozzz.htzcut.core.action.ActionType;
+import com.heytozzz.htzcut.core.subtitle.SubtitlePosition;
 import com.heytozzz.htzcut.core.trigger.TriggerType;
 
 import java.util.List;
@@ -77,7 +78,9 @@ public class EventDefinition {
      * documented per ActionType:
      *   SOUND     -> sound
      *   NARRATION -> textKey, fallbackLocale
-     *   DIALOGUE  -> audio
+     *   DIALOGUE  -> audio, and optionally subtitle, subtitleDurationSeconds,
+     *                subtitlePosition (subtitle box is skipped entirely if
+     *                subtitle is left unset)
      */
     public static class ActionConfig {
         private ActionType type;
@@ -85,6 +88,9 @@ public class EventDefinition {
         private String textKey;
         private String fallbackLocale;
         private String audio;
+        private String subtitle;
+        private Double subtitleDurationSeconds;
+        private SubtitlePosition subtitlePosition;
 
         public ActionType getType() {
             return type;
@@ -124,6 +130,30 @@ public class EventDefinition {
 
         public void setAudio(String audio) {
             this.audio = audio;
+        }
+
+        public String getSubtitle() {
+            return subtitle;
+        }
+
+        public void setSubtitle(String subtitle) {
+            this.subtitle = subtitle;
+        }
+
+        public Double getSubtitleDurationSeconds() {
+            return subtitleDurationSeconds;
+        }
+
+        public void setSubtitleDurationSeconds(Double subtitleDurationSeconds) {
+            this.subtitleDurationSeconds = subtitleDurationSeconds;
+        }
+
+        public SubtitlePosition getSubtitlePosition() {
+            return subtitlePosition;
+        }
+
+        public void setSubtitlePosition(SubtitlePosition subtitlePosition) {
+            this.subtitlePosition = subtitlePosition;
         }
     }
 
