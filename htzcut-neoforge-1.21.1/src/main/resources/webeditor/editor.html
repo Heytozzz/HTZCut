@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HTZCut - Editor de eventos</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; background: #1e1f22; color: #eee; margin: 0; }
+  header { padding: 12px 16px; background: #2b2d31; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  select, input[type=text] { padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1f22; color: #eee; }
+  button { padding: 6px 12px; border-radius: 4px; border: 1px solid #444; background: #2b2d31; color: #eee; cursor: pointer; }
+  button:hover { background: #383a40; }
+  button.primary { background: #4c7bd9; border-color: #4c7bd9; }
+  button.danger { background: #a83a3a; border-color: #a83a3a; }
+  .spacer { flex: 1; }
+
+  .layout { display: flex; }
+  .canvas { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; }
+  .preview-panel { width: 380px; background: #17181a; padding: 16px; border-left: 1px solid #333; }
+  .preview-panel pre { white-space: pre-wrap; font-size: 12px; color: #9cdc8c; }
+
+  .node { background: #2b2d31; border: 1px solid #444; border-radius: 8px; padding: 12px 16px; width: 360px; margin-bottom: 4px; }
+  .node-title { font-weight: bold; font-size: 12px; text-transform: uppercase; opacity: .7; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .connector { width: 2px; height: 24px; background: #4c7bd9; }
+  .field { margin-bottom: 8px; }
+  .field label { display: block; font-size: 11px; opacity: .7; margin-bottom: 3px; }
+  .field-row { display: flex; gap: 6px; }
+  .field-row input { flex: 1; }
+  .node .remove { background: none; border: none; color: #d97070; cursor: pointer; font-size: 12px; padding: 0; }
+  .add-action { margin-top: 8px; }
+  label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+  .modal { background: #2b2d31; border-radius: 8px; padding: 16px; width: 600px; max-height: 80vh; display: flex; flex-direction: column; }
+  .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; overflow-y: auto; flex: 1; margin-top: 10px; }
+  .modal-grid .entry { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 6px; cursor: pointer; }
+  .modal-grid .entry:hover { background: #3a3c42; }
+  .modal-grid img, .modal-grid .noicon { width: 32px; height: 32px; image-rendering: pixelated; }
+  .modal-grid span { font-size: 9px; text-align: center; word-break: break-all; margin-top: 3px; }
+  .modal-footer { display: flex; justify-content: space-between; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HTZCut - Editor</h1>
+  <a href="/" style="color:#9cb8e8; font-size: 12px;">&larr; Selector de recursos</a>
+  <span class="spacer"></span>
+  <select id="event-select"><option value="">-- Nuevo evento --</option></select>
+  <button id="btn-new">Nuevo</button>
+  <button id="btn-clone">Clonar</button>
+  <button id="btn-delete" class="danger">Eliminar</button>
+  <button id="btn-preview">Previsualizar</button>
+  <button id="btn-save" class="primary">Guardar</button>
+</header>
+
+<div class="layout">
+  <div class="canvas" id="canvas"></div>
+  <div class="preview-panel" id="preview-panel" style="display:none;">
+    <div class="node-title">Vista previa YAML</div>
+    <pre id="preview-content"></pre>
+  </div>
+</div>
+
+<script>
+// ---------- State ----------
+let currentFilename = null; // null = new, unsaved event
+let event = blankEvent();
+
+function blankEvent() {
+  return {
+    id: "",
+    trigger: { type: "ITEM_PICKUP", value: "" },
+    actions: [],
+    conditions: { permission: "", oncePerPlayer: false }
+  };
+}
+
+function blankAction(type) {
+  if (type === "SOUND") return { type: "SOUND", sound: "" };
+  if (type === "NARRATION") return { type: "NARRATION", textKey: "", fallbackLocale: "en_us" };
+  return { type: "DIALOGUE", audio: "" };
+}
+
+// ---------- Event list ----------
+async function loadEventList() {
+  const list = await fetch("/api/events").then(r => r.json());
+  const select = document.getElementById("event-select");
+  select.innerHTML = '<option value="">-- Nuevo evento --</option>';
+  for (const entry of list) {
+    const opt = document.createElement("option");
+    opt.value = entry.filename;
+    opt.textContent = entry.filename + (entry.id ? ` (${entry.id})` : " [error]");
+    select.appendChild(opt);
+  }
+}
+
+document.getElementById("event-select").addEventListener("change", async (e) => {
+  const filename = e.target.value;
+  if (!filename) {
+    currentFilename = null;
+    event = blankEvent();
+    render();
+    return;
+  }
+  const data = await fetch(`/api/events/${filename}`).then(r => r.json());
+  currentFilename = filename;
+  event = normalizeLoaded(data);
+  render();
+});
+
+function normalizeLoaded(data) {
+  return {
+    id: data.id || "",
+    trigger: data.trigger || { type: "ITEM_PICKUP", value: "" },
+    actions: data.actions || [],
+    conditions: data.conditions || { permission: "", oncePerPlayer: false }
+  };
+}
+
+// ---------- Toolbar actions ----------
+document.getElementById("btn-new").addEventListener("click", () => {
+  document.getElementById("event-select").value = "";
+  currentFilename = null;
+  event = blankEvent();
+  render();
+});
+
+document.getElementById("btn-save").addEventListener("click", async () => {
+  let filename = currentFilename;
+  if (!filename) {
+    filename = prompt("Nombre del archivo (ej: mi_evento.yaml):", (event.id || "evento") + ".yaml");
+    if (!filename) return;
+    if (!filename.endsWith(".yaml") && !filename.endsWith(".yml")) filename += ".yaml";
+  }
+
+  const res = await fetch(`/api/events/${filename}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(event)
+  });
+  const result = await res.json();
+
+  if (!res.ok) {
+    alert("No se pudo guardar: " + (result.error || "error desconocido"));
+    return;
+  }
+
+  currentFilename = filename;
+  await loadEventList();
+  document.getElementById("event-select").value = filename;
+  alert("Guardado. Recuerda ejecutar /htzcut reload en el juego para aplicar los cambios.");
+});
+
+document.getElementById("btn-delete").addEventListener("click", async () => {
+  if (!currentFilename) {
+    alert("Este evento todavía no se ha guardado.");
+    return;
+  }
+  if (!confirm(`¿Seguro que quieres eliminar "${currentFilename}"? Esta acción no se puede deshacer.`)) {
+    return;
+  }
+  await fetch(`/api/events/${currentFilename}`, { method: "DELETE" });
+  currentFilename = null;
+  event = blankEvent();
+  await loadEventList();
+  render();
+});
+
+document.getElementById("btn-clone").addEventListener("click", async () => {
+  if (!currentFilename) {
+    alert("Guarda el evento primero para poder clonarlo.");
+    return;
+  }
+  let target = prompt("Nombre del archivo clonado:", currentFilename.replace(/\.ya?ml$/, "") + "_copy.yaml");
+  if (!target) return;
+  if (!target.endsWith(".yaml") && !target.endsWith(".yml")) target += ".yaml";
+
+  const res = await fetch(`/api/events/${currentFilename}/clone`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target })
+  });
+  if (!res.ok) {
+    const result = await res.json();
+    alert("No se pudo clonar: " + (result.error || "error desconocido"));
+    return;
+  }
+
+  await loadEventList();
+  document.getElementById("event-select").value = target;
+  const data = await fetch(`/api/events/${target}`).then(r => r.json());
+  currentFilename = target;
+  event = normalizeLoaded(data);
+  render();
+  alert("Clonado. El nuevo evento comparte el mismo \"id\" que el original - edítalo antes de guardar de nuevo.");
+});
+
+document.getElementById("btn-preview").addEventListener("click", () => {
+  const panel = document.getElementById("preview-panel");
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
+  updatePreview();
+});
+
+// ---------- YAML preview (mirrors EventConfigWriter's format) ----------
+function toYamlPreview(def) {
+  const esc = s => (s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  let out = `id: "${esc(def.id)}"\n\n`;
+  out += `trigger:\n  type: ${(def.trigger.type || "").toLowerCase()}\n  value: "${esc(def.trigger.value)}"\n\n`;
+
+  if (def.actions.length > 0) {
+    out += "actions:\n";
+    for (const a of def.actions) {
+      out += `  - type: ${(a.type || "").toLowerCase()}\n`;
+      if (a.type === "SOUND") out += `    sound: "${esc(a.sound)}"\n`;
+      if (a.type === "NARRATION") {
+        out += `    text_key: "${esc(a.textKey)}"\n`;
+        if (a.fallbackLocale) out += `    fallback_locale: "${esc(a.fallbackLocale)}"\n`;
+      }
+      if (a.type === "DIALOGUE") out += `    audio: "${esc(a.audio)}"\n`;
+      out += "\n";
+    }
+  }
+
+  out += "conditions:\n";
+  if (def.conditions.permission) out += `  permission: "${esc(def.conditions.permission)}"\n`;
+  out += `  once_per_player: ${!!def.conditions.oncePerPlayer}\n`;
+  return out;
+}
+
+function updatePreview() {
+  if (document.getElementById("preview-panel").style.display !== "none") {
+    document.getElementById("preview-content").textContent = toYamlPreview(event);
+  }
+}
+
+// ---------- Resource picker modal ----------
+function openPicker(kind, onSelect) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="picker-search" placeholder="Buscar..." style="flex:1">
+        <button id="picker-close">Cerrar</button>
+      </div>
+      <div class="modal-grid" id="picker-grid"></div>
+      <div class="modal-footer">
+        <span id="picker-info" style="font-size:11px; opacity:.7;"></span>
+        <div>
+          <button id="picker-prev">&laquo;</button>
+          <button id="picker-next">&raquo;</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+
+  let page = 0;
+  const size = 60;
+
+  async function load() {
+    const q = document.getElementById("picker-search").value;
+    const params = new URLSearchParams({ q, page, size });
+    const data = await fetch(`/api/registries/${kind}?${params}`).then(r => r.json());
+    const grid = document.getElementById("picker-grid");
+    grid.innerHTML = "";
+    for (const entry of data.items) {
+      const el = document.createElement("div");
+      el.className = "entry";
+      el.title = entry.id;
+      if (kind === "items" || (kind === "advancements" && entry.icon)) {
+        const img = document.createElement("img");
+        img.src = kind === "items" ? iconUrl(entry.id) : iconUrl(entry.icon);
+        img.onerror = () => img.replaceWith(noIcon());
+        el.appendChild(img);
+      } else {
+        el.appendChild(noIcon());
+      }
+      const label = document.createElement("span");
+      label.textContent = entry.id;
+      el.appendChild(label);
+      el.addEventListener("click", () => {
+        onSelect(entry.id);
+        document.body.removeChild(backdrop);
+      });
+      grid.appendChild(el);
+    }
+    const totalPages = Math.max(1, Math.ceil(data.total / size));
+    document.getElementById("picker-info").textContent = `Página ${page + 1}/${totalPages} - ${data.total} resultado(s)`;
+  }
+
+  function iconUrl(id) {
+    const [ns, path] = id.split(":");
+    return `/api/icon/item/${ns}/${path}`;
+  }
+  function noIcon() {
+    const d = document.createElement("div");
+    d.className = "noicon";
+    d.style.background = "#444";
+    d.style.borderRadius = "3px";
+    return d;
+  }
+
+  document.getElementById("picker-close").addEventListener("click", () => document.body.removeChild(backdrop));
+  document.getElementById("picker-search").addEventListener("input", () => { page = 0; load(); });
+  document.getElementById("picker-prev").addEventListener("click", () => { page = Math.max(0, page - 1); load(); });
+  document.getElementById("picker-next").addEventListener("click", () => { page += 1; load(); });
+
+  load();
+}
+
+// ---------- Node rendering ----------
+function render() {
+  const canvas = document.getElementById("canvas");
+  canvas.innerHTML = "";
+
+  canvas.appendChild(renderIdNode());
+  canvas.appendChild(connector());
+  canvas.appendChild(renderTriggerNode());
+  canvas.appendChild(connector());
+
+  for (let i = 0; i < event.actions.length; i++) {
+    canvas.appendChild(renderActionNode(event.actions[i], i));
+    canvas.appendChild(connector());
+  }
+
+  canvas.appendChild(renderAddActionNode());
+  canvas.appendChild(connector());
+  canvas.appendChild(renderConditionsNode());
+
+  updatePreview();
+}
+
+function connector() {
+  const div = document.createElement("div");
+  div.className = "connector";
+  return div;
+}
+
+function renderIdNode() {
+  const node = document.createElement("div");
+  node.className = "node";
+  node.innerHTML = `
+    <div class="node-title">Evento</div>
+    <div class="field">
+      <label>id</label>
+      <input type="text" id="f-id" value="${escapeHtml(event.id)}">
+    </div>`;
+  node.querySelector("#f-id").addEventListener("input", e => { event.id = e.target.value; updatePreview(); });
+  return node;
+}
+
+function renderTriggerNode() {
+  const node = document.createElement("div");
+  node.className = "node";
+  const types = ["ADVANCEMENT", "ITEM_PICKUP", "DIMENSION_ENTER", "FIRST_JOIN", "CUSTOM"];
+
+  node.innerHTML = `
+    <div class="node-title">Trigger</div>
+    <div class="field">
+      <label>tipo</label>
+      <select id="f-trigger-type">
+        ${types.map(t => `<option value="${t}" ${event.trigger.type === t ? "selected" : ""}>${t}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field">
+      <label>valor</label>
+      <div class="field-row">
+        <input type="text" id="f-trigger-value" value="${escapeHtml(event.trigger.value)}">
+        <button id="f-trigger-pick">Elegir...</button>
+      </div>
+    </div>`;
+
+  node.querySelector("#f-trigger-type").addEventListener("change", e => {
+    event.trigger.type = e.target.value;
+    render();
+  });
+  node.querySelector("#f-trigger-value").addEventListener("input", e => {
+    event.trigger.value = e.target.value;
+    updatePreview();
+  });
+
+  const pickBtn = node.querySelector("#f-trigger-pick");
+  const pickerKind = event.trigger.type === "ITEM_PICKUP" ? "items"
+      : event.trigger.type === "ADVANCEMENT" ? "advancements"
+      : null;
+  if (pickerKind) {
+    pickBtn.addEventListener("click", () => openPicker(pickerKind, id => {
+      event.trigger.value = id;
+      render();
+    }));
+  } else if (event.trigger.type === "FIRST_JOIN") {
+    pickBtn.addEventListener("click", () => { event.trigger.value = "first_join"; render(); });
+    pickBtn.textContent = "Usar 'first_join'";
+  } else {
+    pickBtn.disabled = true;
+    pickBtn.title = "Escribe el valor a mano para este tipo de trigger";
+  }
+
+  return node;
+}
+
+function renderActionNode(action, index) {
+  const node = document.createElement("div");
+  node.className = "node";
+  const types = ["SOUND", "NARRATION", "DIALOGUE"];
+
+  let fieldsHtml = "";
+  if (action.type === "SOUND") {
+    fieldsHtml = `
+      <div class="field">
+        <label>sonido</label>
+        <div class="field-row">
+          <input type="text" id="f-sound" value="${escapeHtml(action.sound || "")}">
+          <button id="f-sound-pick">Elegir...</button>
+        </div>
+      </div>`;
+  } else if (action.type === "NARRATION") {
+    fieldsHtml = `
+      <div class="field"><label>text_key</label><input type="text" id="f-textkey" value="${escapeHtml(action.textKey || "")}"></div>
+      <div class="field"><label>fallback_locale</label><input type="text" id="f-fallback" value="${escapeHtml(action.fallbackLocale || "")}"></div>`;
+  } else if (action.type === "DIALOGUE") {
+    fieldsHtml = `
+      <div class="field"><label>archivo de audio (.ogg en config/htzcut/audios/dialogues/)</label>
+      <input type="text" id="f-audio" value="${escapeHtml(action.audio || "")}"></div>`;
+  }
+
+  node.innerHTML = `
+    <div class="node-title">
+      <span>Acción #${index + 1}</span>
+      <button class="remove" data-index="${index}">quitar &times;</button>
+    </div>
+    <div class="field">
+      <label>tipo</label>
+      <select id="f-action-type">
+        ${types.map(t => `<option value="${t}" ${action.type === t ? "selected" : ""}>${t}</option>`).join("")}
+      </select>
+    </div>
+    ${fieldsHtml}
+    <div class="field-row">
+      <button data-move="up" data-index="${index}" ${index === 0 ? "disabled" : ""}>&uarr; subir</button>
+      <button data-move="down" data-index="${index}" ${index === event.actions.length - 1 ? "disabled" : ""}>&darr; bajar</button>
+    </div>`;
+
+  node.querySelector("#f-action-type").addEventListener("change", e => {
+    event.actions[index] = blankAction(e.target.value);
+    render();
+  });
+
+  if (action.type === "SOUND") {
+    node.querySelector("#f-sound").addEventListener("input", e => { action.sound = e.target.value; updatePreview(); });
+    node.querySelector("#f-sound-pick").addEventListener("click", () => openPicker("sounds", id => {
+      action.sound = id;
+      render();
+    }));
+  } else if (action.type === "NARRATION") {
+    node.querySelector("#f-textkey").addEventListener("input", e => { action.textKey = e.target.value; updatePreview(); });
+    node.querySelector("#f-fallback").addEventListener("input", e => { action.fallbackLocale = e.target.value; updatePreview(); });
+  } else if (action.type === "DIALOGUE") {
+    node.querySelector("#f-audio").addEventListener("input", e => { action.audio = e.target.value; updatePreview(); });
+  }
+
+  node.querySelector(".remove").addEventListener("click", () => {
+    event.actions.splice(index, 1);
+    render();
+  });
+  node.querySelectorAll("[data-move]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const dir = btn.dataset.move === "up" ? -1 : 1;
+      const i = index;
+      const j = i + dir;
+      [event.actions[i], event.actions[j]] = [event.actions[j], event.actions[i]];
+      render();
+    });
+  });
+
+  return node;
+}
+
+function renderAddActionNode() {
+  const node = document.createElement("div");
+  node.className = "node add-action";
+  node.innerHTML = `
+    <div class="node-title">Añadir acción</div>
+    <div class="field-row">
+      <select id="new-action-type">
+        <option value="SOUND">sound</option>
+        <option value="NARRATION">narration</option>
+        <option value="DIALOGUE">dialogue</option>
+      </select>
+      <button id="add-action-btn" class="primary">+ Añadir</button>
+    </div>`;
+  node.querySelector("#add-action-btn").addEventListener("click", () => {
+    const type = node.querySelector("#new-action-type").value;
+    event.actions.push(blankAction(type));
+    render();
+  });
+  return node;
+}
+
+function renderConditionsNode() {
+  const node = document.createElement("div");
+  node.className = "node";
+  node.innerHTML = `
+    <div class="node-title">Condiciones</div>
+    <div class="field">
+      <label>permission (opcional)</label>
+      <input type="text" id="f-permission" value="${escapeHtml(event.conditions.permission || "")}">
+    </div>
+    <label class="checkbox">
+      <input type="checkbox" id="f-once" ${event.conditions.oncePerPlayer ? "checked" : ""}>
+      once_per_player
+    </label>`;
+  node.querySelector("#f-permission").addEventListener("input", e => {
+    event.conditions.permission = e.target.value;
+    updatePreview();
+  });
+  node.querySelector("#f-once").addEventListener("change", e => {
+    event.conditions.oncePerPlayer = e.target.checked;
+    updatePreview();
+  });
+  return node;
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+// ---------- Init ----------
+loadEventList();
+render();
+</script>
+
+</body>
+</html>
