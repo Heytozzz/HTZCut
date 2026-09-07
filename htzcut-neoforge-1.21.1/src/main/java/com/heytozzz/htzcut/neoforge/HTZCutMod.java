@@ -44,6 +44,7 @@ public class HTZCutMod {
     public static final String MOD_ID = "htzcut";
 
     private HtzHttpAudioServer httpAudioServer;
+    private WebEditorConfig webEditorConfig;
     private WebEditorServer webEditorServer;
 
     // Kept around so /htzcut reload can rebuild just the event list and
@@ -110,6 +111,7 @@ public class HTZCutMod {
         scheduler = new TickActionScheduler();
 
         WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
+        this.webEditorConfig = webEditorConfig;
         Path eventsDir = FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("events");
         webEditorServer = new WebEditorServer(event.getServer(), webEditorConfig.port(), eventsDir);
         webEditorServer.start();
@@ -139,6 +141,15 @@ public class HTZCutMod {
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
         HTZCommand.register(event.getDispatcher(), this);
+    }
+
+    /**
+     * The web editor's configured port, or -1 if the server hasn't
+     * finished starting (and so hasn't loaded webeditor.properties) yet.
+     * Used by /htzcut editor to build the clickable link.
+     */
+    public int webEditorPort() {
+        return webEditorConfig != null ? webEditorConfig.port() : -1;
     }
 
     /**
