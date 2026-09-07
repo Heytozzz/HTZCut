@@ -17,6 +17,7 @@ import com.heytozzz.htzcut.neoforge.init.HTZRuntime;
 import com.heytozzz.htzcut.neoforge.narration.ChatNarrationSink;
 import com.heytozzz.htzcut.neoforge.network.NetworkRegistration;
 import com.heytozzz.htzcut.neoforge.permission.PermissionCheckerFactory;
+import com.heytozzz.htzcut.neoforge.scheduler.TickActionScheduler;
 import com.heytozzz.htzcut.neoforge.sound.VanillaSoundSink;
 import com.heytozzz.htzcut.neoforge.subtitle.NeoForgeSubtitleSink;
 import com.heytozzz.htzcut.neoforge.trigger.GameTriggerListeners;
@@ -30,6 +31,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -52,6 +54,7 @@ public class HTZCutMod {
     private ChatNarrationSink narrationSink;
     private VanillaSoundSink soundSink;
     private NeoForgeSubtitleSink subtitleSink;
+    private TickActionScheduler scheduler;
 
     public HTZCutMod(IEventBus modEventBus) {
         HTZLog.info("Initializing HTZCut...");
@@ -65,6 +68,7 @@ public class HTZCutMod {
         NeoForge.EVENT_BUS.addListener(this::onServerStarting);
         NeoForge.EVENT_BUS.addListener(this::onServerStopping);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener(this::onServerTick);
 
         // Guarded so the subtitle HUD layer (GuiGraphics et al.) is never
         // classloaded on a dedicated server - see NetworkRegistration for
@@ -103,6 +107,7 @@ public class HTZCutMod {
         narrationSink = new ChatNarrationSink(event.getServer());
         soundSink = new VanillaSoundSink(event.getServer());
         subtitleSink = new NeoForgeSubtitleSink(event.getServer());
+        scheduler = new TickActionScheduler();
 
         WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
         Path eventsDir = FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("events");
@@ -120,6 +125,15 @@ public class HTZCutMod {
         }
         if (webEditorServer != null) {
             webEditorServer.stop();
+        }
+        if (scheduler != null) {
+            scheduler.clear();
+        }
+    }
+
+    private void onServerTick(ServerTickEvent.Post event) {
+        if (scheduler != null) {
+            scheduler.tick();
         }
     }
 
@@ -140,7 +154,7 @@ public class HTZCutMod {
         HTZLog.info("Loaded " + definitions.size() + " event definition(s).");
 
         EventDispatcher dispatcher = new EventDispatcher(
-                definitions, permissionChecker, audioRouter, narrationSink, soundSink, subtitleSink);
+                definitions, permissionChecker, audioRouter, narrationSink, soundSink, subtitleSink, scheduler);
         HTZRuntime.set(dispatcher);
 
         return definitions.size();

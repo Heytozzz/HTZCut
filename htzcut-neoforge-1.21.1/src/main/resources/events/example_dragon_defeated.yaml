@@ -36,6 +36,12 @@
 #                  subtitle_position:               bottom (default) or
 #                                                    top
 #                Leaving subtitle unset skips the box entirely.
+#
+# Any action can also set delay_seconds: how long to wait, after the
+# *previous* action in the list started, before this one runs (not
+# relative to the trigger itself - so each action's delay stacks on top
+# of the ones before it). Left unset or 0, actions run back-to-back with
+# no gap, same as if delay_seconds didn't exist.
 
 id: "welcome_dragon_slain"
 
@@ -50,8 +56,10 @@ actions:
   - type: narration
     text_key: "htzcut.narration.dragon_defeated"
     fallback_locale: "en_us"
+    delay_seconds: 1
 
   - type: dialogue
+    delay_seconds: 1.5
     audio: "dragon_defeated.ogg"
     subtitle: "At last... the dragon falls."
     subtitle_box_effect: bounce

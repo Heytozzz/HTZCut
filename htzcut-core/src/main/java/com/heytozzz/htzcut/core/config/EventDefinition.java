@@ -84,9 +84,15 @@ public class EventDefinition {
      *                subtitleTextEffect, subtitleTextDurationSeconds,
      *                subtitleHoldSeconds, subtitlePosition (subtitle box
      *                is skipped entirely if subtitle is left unset)
+     *
+     * delaySeconds applies to every action type: how long to wait,
+     * after the previous action in the list started, before this one
+     * runs (not relative to the event trigger itself). Left unset or
+     * zero, actions run back-to-back exactly as before this existed.
      */
     public static class ActionConfig {
         private ActionType type;
+        private Double delaySeconds;
         private String sound;
         private String textKey;
         private String fallbackLocale;
@@ -104,6 +110,14 @@ public class EventDefinition {
 
         public void setType(ActionType type) {
             this.type = type;
+        }
+
+        public Double getDelaySeconds() {
+            return delaySeconds;
+        }
+
+        public void setDelaySeconds(Double delaySeconds) {
+            this.delaySeconds = delaySeconds;
         }
 
         public String getSound() {

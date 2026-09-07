@@ -4,6 +4,7 @@ import com.heytozzz.htzcut.core.audio.AudioDeliveryRouter;
 import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
+import com.heytozzz.htzcut.core.scheduler.ActionScheduler;
 import com.heytozzz.htzcut.core.sound.SoundSink;
 import com.heytozzz.htzcut.core.subtitle.SubtitleBoxEffect;
 import com.heytozzz.htzcut.core.subtitle.SubtitlePosition;
@@ -42,6 +43,7 @@ public class EventDispatcher {
     private final NarrationSink narrationSink;
     private final SoundSink soundSink;
     private final SubtitleSink subtitleSink;
+    private final ActionScheduler scheduler;
 
     // Tracks which (playerId, eventId) pairs have already fired, for
     // once_per_player conditions. A real implementation should persist
@@ -53,13 +55,15 @@ public class EventDispatcher {
                             AudioDeliveryRouter audioDeliveryRouter,
                             NarrationSink narrationSink,
                             SoundSink soundSink,
-                            SubtitleSink subtitleSink) {
+                            SubtitleSink subtitleSink,
+                            ActionScheduler scheduler) {
         this.definitions = definitions;
         this.permissionChecker = permissionChecker;
         this.audioDeliveryRouter = audioDeliveryRouter;
         this.narrationSink = narrationSink;
         this.soundSink = soundSink;
         this.subtitleSink = subtitleSink;
+        this.scheduler = scheduler;
     }
 
     public void onTrigger(HTZTriggerFired trigger) {
@@ -102,19 +106,32 @@ public class EventDispatcher {
             return;
         }
 
+        // Each action's delaySeconds is relative to the previous action
+        // in the list (not the trigger itself), so they stack up into a
+        // running offset from "now" that we hand to the scheduler.
+        double cumulativeDelaySeconds = 0;
         for (EventDefinition.ActionConfig action : def.getActions()) {
             if (action.getType() == null) {
                 continue;
             }
 
-            switch (action.getType()) {
-                case SOUND -> soundSink.playSound(playerId, action.getSound());
-                case NARRATION -> narrationSink.sendNarration(
-                        playerId, action.getTextKey(), action.getFallbackLocale());
-                case DIALOGUE -> {
-                    audioDeliveryRouter.playDialogue(playerId, action.getAudio());
-                    fireSubtitleIfPresent(action, playerId);
-                }
+            cumulativeDelaySeconds += action.getDelaySeconds() != null
+                    ? Math.max(0, action.getDelaySeconds())
+                    : 0;
+
+            double scheduledDelay = cumulativeDelaySeconds;
+            scheduler.schedule(scheduledDelay, () -> executeAction(action, playerId));
+        }
+    }
+
+    private void executeAction(EventDefinition.ActionConfig action, UUID playerId) {
+        switch (action.getType()) {
+            case SOUND -> soundSink.playSound(playerId, action.getSound());
+            case NARRATION -> narrationSink.sendNarration(
+                    playerId, action.getTextKey(), action.getFallbackLocale());
+            case DIALOGUE -> {
+                audioDeliveryRouter.playDialogue(playerId, action.getAudio());
+                fireSubtitleIfPresent(action, playerId);
             }
         }
     }

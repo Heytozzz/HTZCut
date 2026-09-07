@@ -38,6 +38,9 @@ public class EventConfigWriter {
                     continue;
                 }
                 sb.append("  - type: ").append(lower(action.getType())).append("\n");
+                if (action.getDelaySeconds() != null && action.getDelaySeconds() != 0) {
+                    sb.append("    delay_seconds: ").append(action.getDelaySeconds()).append("\n");
+                }
                 switch (action.getType()) {
                     case SOUND -> sb.append("    sound: \"").append(escape(action.getSound())).append("\"\n");
                     case NARRATION -> {
@@ -115,6 +118,10 @@ public class EventConfigWriter {
     private void validateAction(String eventId, EventDefinition.ActionConfig action) {
         if (action.getType() == null) {
             throw new IllegalArgumentException("Event '" + eventId + "' has an action with no type selected.");
+        }
+        if (action.getDelaySeconds() != null && action.getDelaySeconds() < 0) {
+            throw new IllegalArgumentException(
+                    "Event '" + eventId + "' has an action with a negative delay_seconds.");
         }
         switch (action.getType()) {
             case SOUND -> {

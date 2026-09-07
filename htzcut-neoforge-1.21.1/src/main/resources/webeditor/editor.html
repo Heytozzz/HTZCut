@@ -78,9 +78,9 @@ function blankEvent() {
 }
 
 function blankAction(type) {
-  if (type === "SOUND") return { type: "SOUND", sound: "" };
-  if (type === "NARRATION") return { type: "NARRATION", textKey: "", fallbackLocale: "en_us" };
-  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleBoxEffect: "INSTANT", subtitleTextEffect: "INSTANT", subtitleTextDurationSeconds: null, subtitleHoldSeconds: null, subtitlePosition: "BOTTOM" };
+  if (type === "SOUND") return { type: "SOUND", sound: "", delaySeconds: null };
+  if (type === "NARRATION") return { type: "NARRATION", textKey: "", fallbackLocale: "en_us", delaySeconds: null };
+  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleBoxEffect: "INSTANT", subtitleTextEffect: "INSTANT", subtitleTextDurationSeconds: null, subtitleHoldSeconds: null, subtitlePosition: "BOTTOM", delaySeconds: null };
 }
 
 // ---------- Event list ----------
@@ -125,7 +125,7 @@ function normalizeLoaded(data) {
 // cleared (see the DIALOGUE field listeners above), but this is a
 // belt-and-suspenders pass in case a stray "" ever ends up on the
 // event object (e.g. state carried over from before that fix).
-const NUMERIC_ACTION_FIELDS = ["subtitleTextDurationSeconds", "subtitleHoldSeconds"];
+const NUMERIC_ACTION_FIELDS = ["subtitleTextDurationSeconds", "subtitleHoldSeconds", "delaySeconds"];
 
 function toSavePayload(ev) {
   const clone = JSON.parse(JSON.stringify(ev));
@@ -233,6 +233,9 @@ function toYamlPreview(def) {
     out += "actions:\n";
     for (const a of def.actions) {
       out += `  - type: ${(a.type || "").toLowerCase()}\n`;
+      if (a.delaySeconds !== "" && a.delaySeconds != null) {
+        out += `    delay_seconds: ${a.delaySeconds}\n`;
+      }
       if (a.type === "SOUND") out += `    sound: "${esc(a.sound)}"\n`;
       if (a.type === "NARRATION") {
         out += `    text_key: "${esc(a.textKey)}"\n`;
@@ -493,6 +496,8 @@ function renderActionNode(action, index) {
         ${types.map(t => `<option value="${t}" ${action.type === t ? "selected" : ""}>${t}</option>`).join("")}
       </select>
     </div>
+    <div class="field"><label>delay antes de esta acción (s, respecto a la anterior)</label>
+    <input type="text" id="f-delay" value="${escapeHtml(action.delaySeconds != null ? action.delaySeconds : "")}" placeholder="0"></div>
     ${fieldsHtml}
     <div class="field-row">
       <button data-move="up" data-index="${index}" ${index === 0 ? "disabled" : ""}>&uarr; subir</button>
@@ -502,6 +507,12 @@ function renderActionNode(action, index) {
   node.querySelector("#f-action-type").addEventListener("change", e => {
     event.actions[index] = blankAction(e.target.value);
     render();
+  });
+
+  node.querySelector("#f-delay").addEventListener("input", e => {
+    const v = e.target.value.trim();
+    action.delaySeconds = v === "" ? null : Number(v);
+    updatePreview();
   });
 
   if (action.type === "SOUND") {
