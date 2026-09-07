@@ -80,7 +80,7 @@ function blankEvent() {
 function blankAction(type) {
   if (type === "SOUND") return { type: "SOUND", sound: "" };
   if (type === "NARRATION") return { type: "NARRATION", textKey: "", fallbackLocale: "en_us" };
-  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleBoxEffect: "INSTANT", subtitleTextEffect: "INSTANT", subtitleTextDurationSeconds: "", subtitleHoldSeconds: "", subtitlePosition: "BOTTOM" };
+  return { type: "DIALOGUE", audio: "", subtitle: "", subtitleBoxEffect: "INSTANT", subtitleTextEffect: "INSTANT", subtitleTextDurationSeconds: null, subtitleHoldSeconds: null, subtitlePosition: "BOTTOM" };
 }
 
 // ---------- Event list ----------
@@ -119,6 +119,26 @@ function normalizeLoaded(data) {
   };
 }
 
+// Numeric action fields must reach the backend as a number or null -
+// EventDefinition maps them to java.lang.Double, and Gson rejects an
+// empty string ("") there with a 400. Inputs are kept as null once
+// cleared (see the DIALOGUE field listeners above), but this is a
+// belt-and-suspenders pass in case a stray "" ever ends up on the
+// event object (e.g. state carried over from before that fix).
+const NUMERIC_ACTION_FIELDS = ["subtitleTextDurationSeconds", "subtitleHoldSeconds"];
+
+function toSavePayload(ev) {
+  const clone = JSON.parse(JSON.stringify(ev));
+  for (const action of clone.actions || []) {
+    for (const field of NUMERIC_ACTION_FIELDS) {
+      if (action[field] === "" || Number.isNaN(action[field])) {
+        action[field] = null;
+      }
+    }
+  }
+  return clone;
+}
+
 // ---------- Toolbar actions ----------
 document.getElementById("btn-new").addEventListener("click", () => {
   document.getElementById("event-select").value = "";
@@ -138,7 +158,7 @@ document.getElementById("btn-save").addEventListener("click", async () => {
   const res = await fetch(`/api/events/${filename}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(event)
+    body: JSON.stringify(toSavePayload(event))
   });
   const result = await res.json();
 
@@ -500,12 +520,12 @@ function renderActionNode(action, index) {
     node.querySelector("#f-text-effect").addEventListener("change", e => { action.subtitleTextEffect = e.target.value; updatePreview(); });
     node.querySelector("#f-text-duration").addEventListener("input", e => {
       const v = e.target.value.trim();
-      action.subtitleTextDurationSeconds = v === "" ? "" : Number(v);
+      action.subtitleTextDurationSeconds = v === "" ? null : Number(v);
       updatePreview();
     });
     node.querySelector("#f-hold").addEventListener("input", e => {
       const v = e.target.value.trim();
-      action.subtitleHoldSeconds = v === "" ? "" : Number(v);
+      action.subtitleHoldSeconds = v === "" ? null : Number(v);
       updatePreview();
     });
     node.querySelector("#f-subtitle-position").addEventListener("change", e => { action.subtitlePosition = e.target.value; updatePreview(); });
