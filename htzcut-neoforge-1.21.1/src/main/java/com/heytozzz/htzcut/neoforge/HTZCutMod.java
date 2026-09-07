@@ -94,7 +94,7 @@ public class HTZCutMod {
 
         audioRouter = new AudioDeliveryRouter(
                 List.of(
-                        new SimpleVoiceChatDeliveryChannel(),
+                        new SimpleVoiceChatDeliveryChannel(event.getServer()),
                         new HttpCacheDeliveryChannel(event.getServer(), httpConfig)
                 ),
                 assetResolver

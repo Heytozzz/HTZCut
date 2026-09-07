@@ -29,6 +29,11 @@ neoForge {
     }
 }
 
+repositories {
+    // SimpleVoiceChat publishes to their own repo, not Maven Central.
+    maven { url = uri("https://maven.maxhenkel.de/repository/public") }
+}
+
 dependencies {
     // "implementation" only puts htzcut-core on the classpath for
     // compiling/running from Gradle - it does NOT bundle its classes into
@@ -69,13 +74,25 @@ dependencies {
     // RELOCATES their packages via the Shadow plugin, so the resulting
     // merged jar shares no classes (and no module name) with any other
     // mod's copy of the same libraries - permanently avoiding this
-    // collision regardless of what else is installed.
+    // collision regardless of what else is installed. It's also reused
+    // SERVER-SIDE now, to decode dialogue .ogg files to PCM before
+    // sending them through Simple Voice Chat (see audio/AudioDecoder).
     implementation(project(":htzcut-audio-libs"))
     jarJar(project(":htzcut-audio-libs"))
 
-    // Soft depends - compileOnly, presence is detected at runtime.
+    // Soft depend - compileOnly since it's provided at runtime by the
+    // actual Simple Voice Chat mod jar when installed; our own
+    // SimpleVoiceChatSupport checks for its presence defensively at
+    // runtime, so the interfaces being merely "on the classpath" here
+    // (without an actual implementation behind them) is harmless when
+    // the mod is absent - nothing calls into them unless it's confirmed
+    // present. NOT jarJar'd: this must never be embedded, since it needs
+    // to bind against whatever real SVC version the server actually has
+    // installed, not a copy we shipped ourselves.
+    compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.21")
+
+    // Soft depend - compileOnly, presence is detected at runtime.
     // Real coordinates/repositories to be pinned once we wire up the
-    // permission and audio delivery implementations.
+    // permission implementation.
     // compileOnly("net.luckperms:api:5.4")
-    // compileOnly("de.maxhenkel.voicechat:voicechat-api:2.x.x")
 }
