@@ -89,7 +89,7 @@ dependencies {
     // present. NOT jarJar'd: this must never be embedded, since it needs
     // to bind against whatever real SVC version the server actually has
     // installed, not a copy we shipped ourselves.
-    compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.21")
+    compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.20")
 
     // Soft depend - compileOnly, presence is detected at runtime.
     // Real coordinates/repositories to be pinned once we wire up the
