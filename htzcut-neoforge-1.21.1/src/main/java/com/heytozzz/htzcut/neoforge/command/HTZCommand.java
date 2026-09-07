@@ -10,6 +10,7 @@ import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -89,11 +90,18 @@ public final class HTZCommand {
      * and finally to "localhost" if even that lookup fails. Admins
      * running behind NAT/port-forwarding with no server-ip set may need
      * to swap the host in the link for their real public address.
+     *
+     * getServerIp() only exists on DedicatedServer (it comes from the
+     * ServerInterface that DedicatedServer implements, not from
+     * MinecraftServer itself) - so the integrated/singleplayer server
+     * just always falls through to the local-address lookup below.
      */
     private static String resolveHost(MinecraftServer server) {
-        String configured = server.getServerIp();
-        if (configured != null && !configured.isBlank()) {
-            return configured;
+        if (server instanceof DedicatedServer dedicated) {
+            String configured = dedicated.getServerIp();
+            if (configured != null && !configured.isBlank()) {
+                return configured;
+            }
         }
         try {
             return InetAddress.getLocalHost().getHostAddress();
