@@ -22,5 +22,12 @@ public enum ActionType {
      * Plays a dynamic dialogue audio file (server-provided .ogg), routed
      * through Simple Voice Chat or the HTTP fallback.
      */
-    DIALOGUE
+    DIALOGUE,
+
+    /**
+     * Puts the player in spectator mode and moves their camera through
+     * a sequence of keyframes, then restores their original gamemode
+     * and position.
+     */
+    CINEMATIC
 }

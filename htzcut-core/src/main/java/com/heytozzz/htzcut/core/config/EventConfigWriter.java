@@ -76,6 +76,22 @@ public class EventConfigWriter {
                             }
                         }
                     }
+                    case CINEMATIC -> {
+                        if (action.getDurationSeconds() != null) {
+                            sb.append("    duration_seconds: ").append(action.getDurationSeconds()).append("\n");
+                        }
+                        sb.append("    keyframes:\n");
+                        for (EventDefinition.KeyframeConfig keyframe : action.getKeyframes()) {
+                            sb.append("      - x: ").append(keyframe.getX()).append("\n");
+                            sb.append("        y: ").append(keyframe.getY()).append("\n");
+                            sb.append("        z: ").append(keyframe.getZ()).append("\n");
+                            sb.append("        yaw: ").append(keyframe.getYaw()).append("\n");
+                            sb.append("        pitch: ").append(keyframe.getPitch()).append("\n");
+                            if (keyframe.getTimeSeconds() != null) {
+                                sb.append("        time_seconds: ").append(keyframe.getTimeSeconds()).append("\n");
+                            }
+                        }
+                    }
                 }
                 sb.append("\n");
             }
@@ -150,6 +166,22 @@ public class EventConfigWriter {
                     throw new IllegalArgumentException(
                             "Event '" + eventId + "' has a dialogue action with a negative "
                                     + "subtitle_hold_seconds.");
+                }
+            }
+            case CINEMATIC -> {
+                if (action.getKeyframes() == null || action.getKeyframes().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Event '" + eventId + "' has a cinematic action with no keyframes.");
+                }
+                if (action.getDurationSeconds() != null && action.getDurationSeconds() <= 0) {
+                    throw new IllegalArgumentException(
+                            "Event '" + eventId + "' has a cinematic action with a non-positive duration_seconds.");
+                }
+                for (EventDefinition.KeyframeConfig keyframe : action.getKeyframes()) {
+                    if (keyframe.getTimeSeconds() != null && keyframe.getTimeSeconds() <= 0) {
+                        throw new IllegalArgumentException(
+                                "Event '" + eventId + "' has a cinematic keyframe with a non-positive time_seconds.");
+                    }
                 }
             }
         }

@@ -1,0 +1,47 @@
+# Example cinematic: puts the player in spectator mode and pans the
+# camera through three points, then restores them where they were.
+#
+# duration_seconds (optional): if set, every keyframe's own
+# time_seconds becomes a relative WEIGHT and the whole path is scaled to
+# last exactly this many seconds - change this one number to re-time
+# every frame proportionally instead of editing each one by hand.
+# Leave it unset to use each keyframe's time_seconds as a literal
+# duration instead.
+#
+# Trigger this manually to test it, without needing to set up a real
+# in-game condition:
+#   /htzcut play cinematic_demo <your_name>
+
+id: "cinematic_demo"
+
+trigger:
+  type: CUSTOM
+  value: "cinematic_demo_trigger"
+
+actions:
+  - type: cinematic
+    duration_seconds: 9.0
+    keyframes:
+      - x: 0.5
+        y: 80.0
+        z: 0.5
+        yaw: 0.0
+        pitch: 0.0
+        time_seconds: 1.0
+
+      - x: 20.5
+        y: 85.0
+        z: 10.5
+        yaw: 90.0
+        pitch: -10.0
+        time_seconds: 2.0
+
+      - x: 20.5
+        y: 90.0
+        z: -10.5
+        yaw: 180.0
+        pitch: 0.0
+        time_seconds: 1.0
+
+conditions:
+  once_per_player: false

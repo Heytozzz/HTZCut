@@ -1,16 +1,22 @@
 package com.heytozzz.htzcut.neoforge.command;
 
+import com.heytozzz.htzcut.core.event.EventDispatcher;
 import com.heytozzz.htzcut.neoforge.HTZCutMod;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
+import com.heytozzz.htzcut.neoforge.init.HTZRuntime;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dedicated.DedicatedServer;
+import net.minecraft.server.level.ServerPlayer;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -18,6 +24,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
 
@@ -28,6 +35,15 @@ import java.util.List;
  *
  * /htzcut editor - sends a clickable chat link that opens the web
  * editor, with the host/port already filled in.
+ *
+ * /htzcut play &lt;event&gt; &lt;targets&gt; - manually fires an event for one
+ * or more players (any vanilla player selector: a name, @a, @p, etc.).
+ * Each target's own conditions (permission/once_per_player) still apply
+ * UNLESS that specific player holds "htzcut.ignore.&lt;event&gt;", in which
+ * case the event fires unconditionally for them and once_per_player is
+ * left untouched for that call - useful for testers/VIPs who need to
+ * replay a once-only event without affecting its normal gating for
+ * everyone else.
  *
  * Gated behind vanilla OP level 2 for now. A LuckPerms-aware permission
  * node (e.g. "htzcut.command.reload") is a natural follow-up once the
@@ -70,7 +86,59 @@ public final class HTZCommand {
                                     return 1;
                                 })
                         )
+                        .then(Commands.literal("play")
+                                .then(Commands.argument("event", StringArgumentType.word())
+                                        .suggests((context, builder) -> {
+                                            EventDispatcher active = HTZRuntime.get();
+                                            List<String> ids = active != null ? active.getEventIds() : List.of();
+                                            return SharedSuggestionProvider.suggest(ids, builder);
+                                        })
+                                        .then(Commands.argument("targets", EntityArgument.players())
+                                                .executes(context -> {
+                                                    String eventId = StringArgumentType.getString(context, "event");
+                                                    Collection<ServerPlayer> targets =
+                                                            EntityArgument.getPlayers(context, "targets");
+                                                    return playEvent(context.getSource(), mod, eventId, targets);
+                                                })
+                                        )
+                                )
+                        )
         );
+    }
+
+    /**
+     * Fires {eventId} for every player in {targets}. Each target's own
+     * "htzcut.ignore.&lt;eventId&gt;" permission decides whether their own
+     * conditions are bypassed - see the class javadoc.
+     */
+    private static int playEvent(CommandSourceStack source, HTZCutMod mod, String eventId,
+                                  Collection<ServerPlayer> targets) {
+        EventDispatcher dispatcher = HTZRuntime.get();
+        if (dispatcher == null) {
+            source.sendFailure(Component.literal("[HTZCut] Not ready yet - try again in a moment."));
+            return 0;
+        }
+
+        if (dispatcher.findById(eventId).isEmpty()) {
+            source.sendFailure(Component.literal("[HTZCut] Unknown event id: '" + eventId + "'."));
+            return 0;
+        }
+
+        int fired = 0;
+        for (ServerPlayer target : targets) {
+            boolean bypass = mod.permissionChecker()
+                    .hasPermission(target.getUUID(), "htzcut.ignore." + eventId);
+            if (dispatcher.fireManually(eventId, target.getUUID(), bypass)) {
+                fired++;
+            }
+        }
+
+        int total = targets.size();
+        int finalFired = fired;
+        source.sendSuccess(() -> Component.literal(
+                "[HTZCut] Fired '" + eventId + "' for " + finalFired + "/" + total + " player(s)."), true);
+        HTZLog.info("/htzcut play " + eventId + " -> " + finalFired + "/" + total + " player(s)");
+        return fired;
     }
 
     /**

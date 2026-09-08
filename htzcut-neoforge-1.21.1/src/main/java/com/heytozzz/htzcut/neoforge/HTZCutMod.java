@@ -9,6 +9,7 @@ import com.heytozzz.htzcut.neoforge.audio.HttpCacheDeliveryChannel;
 import com.heytozzz.htzcut.neoforge.audio.HtzHttpAudioServer;
 import com.heytozzz.htzcut.neoforge.audio.SimpleVoiceChatDeliveryChannel;
 import com.heytozzz.htzcut.neoforge.client.HTZClientEvents;
+import com.heytozzz.htzcut.neoforge.cinematic.CinematicRunner;
 import com.heytozzz.htzcut.neoforge.command.HTZCommand;
 import com.heytozzz.htzcut.neoforge.config.EventFileManager;
 import com.heytozzz.htzcut.neoforge.config.HttpServerConfig;
@@ -17,6 +18,7 @@ import com.heytozzz.htzcut.neoforge.init.HTZRuntime;
 import com.heytozzz.htzcut.neoforge.narration.ChatNarrationSink;
 import com.heytozzz.htzcut.neoforge.network.NetworkRegistration;
 import com.heytozzz.htzcut.neoforge.permission.PermissionCheckerFactory;
+import com.heytozzz.htzcut.neoforge.persistence.FileFiredOnceStore;
 import com.heytozzz.htzcut.neoforge.scheduler.TickActionScheduler;
 import com.heytozzz.htzcut.neoforge.sound.VanillaSoundSink;
 import com.heytozzz.htzcut.neoforge.subtitle.NeoForgeSubtitleSink;
@@ -56,6 +58,8 @@ public class HTZCutMod {
     private VanillaSoundSink soundSink;
     private NeoForgeSubtitleSink subtitleSink;
     private TickActionScheduler scheduler;
+    private FileFiredOnceStore firedOnceStore;
+    private CinematicRunner cinematicRunner;
 
     public HTZCutMod(IEventBus modEventBus) {
         HTZLog.info("Initializing HTZCut...");
@@ -81,8 +85,10 @@ public class HTZCutMod {
     }
 
     private void onServerStarting(ServerStartingEvent event) {
-        permissionChecker = PermissionCheckerFactory.detect();
+        permissionChecker = PermissionCheckerFactory.detect(event.getServer());
         HTZLog.info("Permission backend in use: " + permissionChecker.backendName());
+
+        firedOnceStore = new FileFiredOnceStore(event.getServer());
 
         Path dialoguesDir = FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("audios").resolve("dialogues");
         try {
@@ -109,6 +115,7 @@ public class HTZCutMod {
         soundSink = new VanillaSoundSink(event.getServer());
         subtitleSink = new NeoForgeSubtitleSink(event.getServer());
         scheduler = new TickActionScheduler();
+        cinematicRunner = new CinematicRunner(event.getServer());
 
         WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
         this.webEditorConfig = webEditorConfig;
@@ -131,11 +138,17 @@ public class HTZCutMod {
         if (scheduler != null) {
             scheduler.clear();
         }
+        if (cinematicRunner != null) {
+            cinematicRunner.clear();
+        }
     }
 
     private void onServerTick(ServerTickEvent.Post event) {
         if (scheduler != null) {
             scheduler.tick();
+        }
+        if (cinematicRunner != null) {
+            cinematicRunner.tick();
         }
     }
 
@@ -153,6 +166,14 @@ public class HTZCutMod {
     }
 
     /**
+     * The active permission backend, used by /htzcut play to check the
+     * "htzcut.ignore.&lt;event&gt;" bypass node for each target player.
+     */
+    public com.heytozzz.htzcut.core.permission.PermissionChecker permissionChecker() {
+        return permissionChecker;
+    }
+
+    /**
      * Re-reads every event YAML from config/htzcut/events/ and rebuilds
      * the EventDispatcher, without touching the HTTP server, permission
      * backend, or delivery channels. Called on server start and from
@@ -165,7 +186,8 @@ public class HTZCutMod {
         HTZLog.info("Loaded " + definitions.size() + " event definition(s).");
 
         EventDispatcher dispatcher = new EventDispatcher(
-                definitions, permissionChecker, audioRouter, narrationSink, soundSink, subtitleSink, scheduler);
+                definitions, permissionChecker, audioRouter, narrationSink, soundSink, subtitleSink, scheduler,
+                firedOnceStore, cinematicRunner);
         HTZRuntime.set(dispatcher);
 
         return definitions.size();

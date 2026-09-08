@@ -24,7 +24,8 @@ public final class EventFileManager {
     // src/main/resources/events/.
     private static final String[] DEFAULT_EVENT_FILES = {
             "example_dragon_defeated.yaml",
-            "example_diamond_pickup.yaml"
+            "example_diamond_pickup.yaml",
+            "example_cinematic.yaml"
     };
 
     private EventFileManager() {

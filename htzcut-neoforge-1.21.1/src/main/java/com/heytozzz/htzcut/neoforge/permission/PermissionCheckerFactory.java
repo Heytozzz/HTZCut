@@ -2,6 +2,7 @@ package com.heytozzz.htzcut.neoforge.permission;
 
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.fml.ModList;
 
 /**
@@ -22,7 +23,7 @@ public final class PermissionCheckerFactory {
     private PermissionCheckerFactory() {
     }
 
-    public static PermissionChecker detect() {
+    public static PermissionChecker detect(MinecraftServer server) {
         if (isLuckPermsPluginAvailable()) {
             HTZLog.info("Detected LuckPerms as a Bukkit plugin (hybrid server).");
             return new LuckPermsPluginChecker();
@@ -34,7 +35,7 @@ public final class PermissionCheckerFactory {
         }
 
         HTZLog.info("No LuckPerms backend found, falling back to vanilla OP permissions.");
-        return new VanillaOpChecker();
+        return new VanillaOpChecker(server);
     }
 
     private static boolean isLuckPermsModAvailable() {

@@ -1,9 +1,12 @@
 package com.heytozzz.htzcut.core.event;
 
 import com.heytozzz.htzcut.core.audio.AudioDeliveryRouter;
+import com.heytozzz.htzcut.core.cinematic.CameraKeyframe;
+import com.heytozzz.htzcut.core.cinematic.CinematicSink;
 import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
+import com.heytozzz.htzcut.core.persistence.FiredOnceStore;
 import com.heytozzz.htzcut.core.scheduler.ActionScheduler;
 import com.heytozzz.htzcut.core.sound.SoundSink;
 import com.heytozzz.htzcut.core.subtitle.SubtitleBoxEffect;
@@ -13,9 +16,8 @@ import com.heytozzz.htzcut.core.subtitle.SubtitleTextEffect;
 import com.heytozzz.htzcut.core.trigger.HTZTriggerFired;
 
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Receives loader-agnostic trigger notifications and, for every matching
@@ -44,11 +46,8 @@ public class EventDispatcher {
     private final SoundSink soundSink;
     private final SubtitleSink subtitleSink;
     private final ActionScheduler scheduler;
-
-    // Tracks which (playerId, eventId) pairs have already fired, for
-    // once_per_player conditions. A real implementation should persist
-    // this to disk instead of keeping it purely in memory.
-    private final Set<String> firedOnce = ConcurrentHashMap.newKeySet();
+    private final FiredOnceStore firedOnceStore;
+    private final CinematicSink cinematicSink;
 
     public EventDispatcher(List<EventDefinition> definitions,
                             PermissionChecker permissionChecker,
@@ -56,7 +55,9 @@ public class EventDispatcher {
                             NarrationSink narrationSink,
                             SoundSink soundSink,
                             SubtitleSink subtitleSink,
-                            ActionScheduler scheduler) {
+                            ActionScheduler scheduler,
+                            FiredOnceStore firedOnceStore,
+                            CinematicSink cinematicSink) {
         this.definitions = definitions;
         this.permissionChecker = permissionChecker;
         this.audioDeliveryRouter = audioDeliveryRouter;
@@ -64,6 +65,8 @@ public class EventDispatcher {
         this.soundSink = soundSink;
         this.subtitleSink = subtitleSink;
         this.scheduler = scheduler;
+        this.firedOnceStore = firedOnceStore;
+        this.cinematicSink = cinematicSink;
     }
 
     public void onTrigger(HTZTriggerFired trigger) {
@@ -72,6 +75,44 @@ public class EventDispatcher {
                 fire(def, trigger.playerId());
             }
         }
+    }
+
+    /** Every currently loaded event id, for command tab-completion. */
+    public List<String> getEventIds() {
+        return definitions.stream().map(EventDefinition::getId).toList();
+    }
+
+    public Optional<EventDefinition> findById(String eventId) {
+        return definitions.stream().filter(def -> def.getId().equals(eventId)).findFirst();
+    }
+
+    /**
+     * Manually fires an event by id, e.g. from /htzcut play.
+     *
+     * @param bypassConditions when true, skips the event's permission
+     *                         and once_per_player conditions entirely
+     *                         (and never touches the once_per_player
+     *                         store for this call) - used when the
+     *                         target player holds
+     *                         "htzcut.ignore.&lt;eventId&gt;". When false,
+     *                         the event's normal conditions apply exactly
+     *                         as they would for an organic trigger.
+     * @return true if the event existed and its conditions allowed it
+     *         to fire (or were bypassed); false if the event id is
+     *         unknown or its conditions blocked it.
+     */
+    public boolean fireManually(String eventId, UUID playerId, boolean bypassConditions) {
+        Optional<EventDefinition> def = findById(eventId);
+        if (def.isEmpty()) {
+            return false;
+        }
+
+        if (!bypassConditions && !conditionsPass(def.get(), playerId)) {
+            return false;
+        }
+
+        fire(def.get(), playerId);
+        return true;
     }
 
     private boolean matches(EventDefinition def, HTZTriggerFired trigger) {
@@ -94,8 +135,11 @@ public class EventDispatcher {
         }
 
         if (conditions.isOncePerPlayer()) {
-            String key = playerId + ":" + def.getId();
-            return firedOnce.add(key); // returns false if it was already present
+            if (firedOnceStore.hasFired(playerId, def.getId())) {
+                return false;
+            }
+            firedOnceStore.markFired(playerId, def.getId());
+            return true;
         }
 
         return true;
@@ -133,7 +177,23 @@ public class EventDispatcher {
                 audioDeliveryRouter.playDialogue(playerId, action.getAudio());
                 fireSubtitleIfPresent(action, playerId);
             }
+            case CINEMATIC -> fireCinematic(action, playerId);
         }
+    }
+
+    private void fireCinematic(EventDefinition.ActionConfig action, UUID playerId) {
+        List<EventDefinition.KeyframeConfig> rawKeyframes = action.getKeyframes();
+        if (rawKeyframes == null || rawKeyframes.isEmpty()) {
+            return;
+        }
+
+        List<CameraKeyframe> keyframes = rawKeyframes.stream()
+                .map(k -> new CameraKeyframe(
+                        k.getX(), k.getY(), k.getZ(), k.getYaw(), k.getPitch(),
+                        k.getTimeSeconds() != null ? k.getTimeSeconds() : 1.0))
+                .toList();
+
+        cinematicSink.playCinematic(playerId, keyframes, action.getDurationSeconds());
     }
 
     private void fireSubtitleIfPresent(EventDefinition.ActionConfig action, UUID playerId) {

@@ -84,6 +84,10 @@ public class EventDefinition {
      *                subtitleTextEffect, subtitleTextDurationSeconds,
      *                subtitleHoldSeconds, subtitlePosition (subtitle box
      *                is skipped entirely if subtitle is left unset)
+     *   CINEMATIC -> keyframes (required, at least one), and optionally
+     *                durationSeconds (see KeyframeConfig/CinematicSink
+     *                for how it interacts with each keyframe's own
+     *                timeSeconds)
      *
      * delaySeconds applies to every action type: how long to wait,
      * after the previous action in the list started, before this one
@@ -103,6 +107,8 @@ public class EventDefinition {
         private Double subtitleTextDurationSeconds;
         private Double subtitleHoldSeconds;
         private SubtitlePosition subtitlePosition;
+        private List<KeyframeConfig> keyframes;
+        private Double durationSeconds;
 
         public ActionType getType() {
             return type;
@@ -198,6 +204,92 @@ public class EventDefinition {
 
         public void setSubtitlePosition(SubtitlePosition subtitlePosition) {
             this.subtitlePosition = subtitlePosition;
+        }
+
+        public List<KeyframeConfig> getKeyframes() {
+            return keyframes;
+        }
+
+        public void setKeyframes(List<KeyframeConfig> keyframes) {
+            this.keyframes = keyframes;
+        }
+
+        /**
+         * If set, every keyframe's own timeSeconds becomes a relative
+         * weight instead of a literal duration, and the whole cinematic
+         * is scaled to last exactly this many seconds in total -
+         * changing this one number re-times every frame proportionally
+         * instead of having to edit each one by hand.
+         */
+        public Double getDurationSeconds() {
+            return durationSeconds;
+        }
+
+        public void setDurationSeconds(Double durationSeconds) {
+            this.durationSeconds = durationSeconds;
+        }
+    }
+
+    /**
+     * One camera position/rotation target for a CINEMATIC action.
+     * timeSeconds is how long it takes to travel from the previous
+     * keyframe (or the player's position when the cinematic starts, for
+     * the first one) to this one - defaults to 1.0 second if left unset.
+     */
+    public static class KeyframeConfig {
+        private double x;
+        private double y;
+        private double z;
+        private float yaw;
+        private float pitch;
+        private Double timeSeconds;
+
+        public double getX() {
+            return x;
+        }
+
+        public void setX(double x) {
+            this.x = x;
+        }
+
+        public double getY() {
+            return y;
+        }
+
+        public void setY(double y) {
+            this.y = y;
+        }
+
+        public double getZ() {
+            return z;
+        }
+
+        public void setZ(double z) {
+            this.z = z;
+        }
+
+        public float getYaw() {
+            return yaw;
+        }
+
+        public void setYaw(float yaw) {
+            this.yaw = yaw;
+        }
+
+        public float getPitch() {
+            return pitch;
+        }
+
+        public void setPitch(float pitch) {
+            this.pitch = pitch;
+        }
+
+        public Double getTimeSeconds() {
+            return timeSeconds;
+        }
+
+        public void setTimeSeconds(Double timeSeconds) {
+            this.timeSeconds = timeSeconds;
         }
     }
 
