@@ -1,5 +1,7 @@
 package com.heytozzz.htzcut.core.config;
 
+import com.heytozzz.htzcut.core.cinematic.KeyframeConfig;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -77,18 +79,24 @@ public class EventConfigWriter {
                         }
                     }
                     case CINEMATIC -> {
-                        if (action.getDurationSeconds() != null) {
-                            sb.append("    duration_seconds: ").append(action.getDurationSeconds()).append("\n");
-                        }
-                        sb.append("    keyframes:\n");
-                        for (EventDefinition.KeyframeConfig keyframe : action.getKeyframes()) {
-                            sb.append("      - x: ").append(keyframe.getX()).append("\n");
-                            sb.append("        y: ").append(keyframe.getY()).append("\n");
-                            sb.append("        z: ").append(keyframe.getZ()).append("\n");
-                            sb.append("        yaw: ").append(keyframe.getYaw()).append("\n");
-                            sb.append("        pitch: ").append(keyframe.getPitch()).append("\n");
-                            if (keyframe.getTimeSeconds() != null) {
-                                sb.append("        time_seconds: ").append(keyframe.getTimeSeconds()).append("\n");
+                        if (action.getCinematic() != null && !action.getCinematic().isBlank()) {
+                            sb.append("    cinematic: \"").append(escape(action.getCinematic())).append("\"\n");
+                        } else {
+                            if (action.getDurationSeconds() != null) {
+                                sb.append("    duration_seconds: ")
+                                        .append(action.getDurationSeconds()).append("\n");
+                            }
+                            sb.append("    keyframes:\n");
+                            for (KeyframeConfig keyframe : action.getKeyframes()) {
+                                sb.append("      - x: ").append(keyframe.getX()).append("\n");
+                                sb.append("        y: ").append(keyframe.getY()).append("\n");
+                                sb.append("        z: ").append(keyframe.getZ()).append("\n");
+                                sb.append("        yaw: ").append(keyframe.getYaw()).append("\n");
+                                sb.append("        pitch: ").append(keyframe.getPitch()).append("\n");
+                                if (keyframe.getTimeSeconds() != null) {
+                                    sb.append("        time_seconds: ")
+                                            .append(keyframe.getTimeSeconds()).append("\n");
+                                }
                             }
                         }
                     }
@@ -169,18 +177,24 @@ public class EventConfigWriter {
                 }
             }
             case CINEMATIC -> {
-                if (action.getKeyframes() == null || action.getKeyframes().isEmpty()) {
+                boolean hasNamedCinematic = action.getCinematic() != null && !action.getCinematic().isBlank();
+                boolean hasInlineKeyframes = action.getKeyframes() != null && !action.getKeyframes().isEmpty();
+
+                if (!hasNamedCinematic && !hasInlineKeyframes) {
                     throw new IllegalArgumentException(
-                            "Event '" + eventId + "' has a cinematic action with no keyframes.");
+                            "Event '" + eventId + "' has a cinematic action with no 'cinematic' name "
+                                    + "and no inline keyframes.");
                 }
                 if (action.getDurationSeconds() != null && action.getDurationSeconds() <= 0) {
                     throw new IllegalArgumentException(
                             "Event '" + eventId + "' has a cinematic action with a non-positive duration_seconds.");
                 }
-                for (EventDefinition.KeyframeConfig keyframe : action.getKeyframes()) {
-                    if (keyframe.getTimeSeconds() != null && keyframe.getTimeSeconds() <= 0) {
-                        throw new IllegalArgumentException(
-                                "Event '" + eventId + "' has a cinematic keyframe with a non-positive time_seconds.");
+                if (hasInlineKeyframes) {
+                    for (KeyframeConfig keyframe : action.getKeyframes()) {
+                        if (keyframe.getTimeSeconds() != null && keyframe.getTimeSeconds() <= 0) {
+                            throw new IllegalArgumentException("Event '" + eventId
+                                    + "' has a cinematic keyframe with a non-positive time_seconds.");
+                        }
                     }
                 }
             }

@@ -103,6 +103,7 @@ public final class HTZCommand {
                                         )
                                 )
                         )
+                        .then(CinematicCommand.build(mod))
         );
     }
 

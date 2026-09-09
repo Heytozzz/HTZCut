@@ -60,16 +60,33 @@ public final class CinematicRunner implements CinematicSink {
             restore(player, existing);
         }
 
-        List<Segment> segments = buildSegments(keyframes, totalDurationSeconds);
+        GameType originalGameMode = player.gameMode.getGameModeForPlayer();
+        double originalX = player.getX();
+        double originalY = player.getY();
+        double originalZ = player.getZ();
+        float originalYaw = player.getYRot();
+        float originalPitch = player.getXRot();
+
+        player.setGameMode(GameType.SPECTATOR);
+
+        // The jump to the first keyframe is an instant cut, not part of
+        // the interpolated path - only the segments BETWEEN keyframes
+        // are smoothly animated. Its own timeSeconds is therefore
+        // unused (there's nothing to interpolate on the way to it).
+        CameraKeyframe first = keyframes.get(0);
+        player.teleportTo(player.serverLevel(), first.x(), first.y(), first.z(),
+                Set.of(), first.yaw(), first.pitch());
+
+        List<CameraKeyframe> remainingKeyframes = keyframes.subList(1, keyframes.size());
+        List<Segment> segments = buildSegments(remainingKeyframes, totalDurationSeconds);
 
         ActiveCinematic cinematic = new ActiveCinematic(
                 segments,
-                player.getX(), player.getY(), player.getZ(),
-                player.getYRot(), player.getXRot(),
-                player.gameMode.getGameModeForPlayer()
+                first.x(), first.y(), first.z(), first.yaw(), first.pitch(),
+                originalX, originalY, originalZ, originalYaw, originalPitch,
+                originalGameMode
         );
 
-        player.setGameMode(GameType.SPECTATOR);
         active.put(playerId, cinematic);
     }
 
@@ -179,8 +196,8 @@ public final class CinematicRunner implements CinematicSink {
     private void restore(ServerPlayer player, ActiveCinematic cinematic) {
         try {
             player.setGameMode(cinematic.originalGameMode);
-            player.teleportTo(player.serverLevel(), cinematic.startX, cinematic.startY, cinematic.startZ,
-                    Set.of(), cinematic.startYaw, cinematic.startPitch);
+            player.teleportTo(player.serverLevel(), cinematic.originalX, cinematic.originalY, cinematic.originalZ,
+                    Set.of(), cinematic.originalYaw, cinematic.originalPitch);
         } catch (Exception e) {
             HTZLog.error("Failed to restore player after cinematic playback", e);
         }
@@ -210,17 +227,30 @@ public final class CinematicRunner implements CinematicSink {
         final double startZ;
         final float startYaw;
         final float startPitch;
+        final double originalX;
+        final double originalY;
+        final double originalZ;
+        final float originalYaw;
+        final float originalPitch;
         final GameType originalGameMode;
         long elapsedTicks;
 
         ActiveCinematic(List<Segment> segments, double startX, double startY, double startZ,
-                         float startYaw, float startPitch, GameType originalGameMode) {
+                         float startYaw, float startPitch,
+                         double originalX, double originalY, double originalZ,
+                         float originalYaw, float originalPitch,
+                         GameType originalGameMode) {
             this.segments = segments;
             this.startX = startX;
             this.startY = startY;
             this.startZ = startZ;
             this.startYaw = startYaw;
             this.startPitch = startPitch;
+            this.originalX = originalX;
+            this.originalY = originalY;
+            this.originalZ = originalZ;
+            this.originalYaw = originalYaw;
+            this.originalPitch = originalPitch;
             this.originalGameMode = originalGameMode;
         }
     }

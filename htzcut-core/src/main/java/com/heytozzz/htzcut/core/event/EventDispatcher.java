@@ -2,7 +2,10 @@ package com.heytozzz.htzcut.core.event;
 
 import com.heytozzz.htzcut.core.audio.AudioDeliveryRouter;
 import com.heytozzz.htzcut.core.cinematic.CameraKeyframe;
+import com.heytozzz.htzcut.core.cinematic.CinematicDefinition;
+import com.heytozzz.htzcut.core.cinematic.CinematicRepository;
 import com.heytozzz.htzcut.core.cinematic.CinematicSink;
+import com.heytozzz.htzcut.core.cinematic.KeyframeConfig;
 import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.narration.NarrationSink;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
@@ -15,6 +18,7 @@ import com.heytozzz.htzcut.core.subtitle.SubtitleSink;
 import com.heytozzz.htzcut.core.subtitle.SubtitleTextEffect;
 import com.heytozzz.htzcut.core.trigger.HTZTriggerFired;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -48,6 +52,7 @@ public class EventDispatcher {
     private final ActionScheduler scheduler;
     private final FiredOnceStore firedOnceStore;
     private final CinematicSink cinematicSink;
+    private final CinematicRepository cinematicRepository;
 
     public EventDispatcher(List<EventDefinition> definitions,
                             PermissionChecker permissionChecker,
@@ -57,7 +62,8 @@ public class EventDispatcher {
                             SubtitleSink subtitleSink,
                             ActionScheduler scheduler,
                             FiredOnceStore firedOnceStore,
-                            CinematicSink cinematicSink) {
+                            CinematicSink cinematicSink,
+                            CinematicRepository cinematicRepository) {
         this.definitions = definitions;
         this.permissionChecker = permissionChecker;
         this.audioDeliveryRouter = audioDeliveryRouter;
@@ -67,6 +73,7 @@ public class EventDispatcher {
         this.scheduler = scheduler;
         this.firedOnceStore = firedOnceStore;
         this.cinematicSink = cinematicSink;
+        this.cinematicRepository = cinematicRepository;
     }
 
     public void onTrigger(HTZTriggerFired trigger) {
@@ -182,7 +189,28 @@ public class EventDispatcher {
     }
 
     private void fireCinematic(EventDefinition.ActionConfig action, UUID playerId) {
-        List<EventDefinition.KeyframeConfig> rawKeyframes = action.getKeyframes();
+        String cinematicName = action.getCinematic();
+
+        List<KeyframeConfig> rawKeyframes;
+        Double durationSeconds;
+
+        if (cinematicName != null && !cinematicName.isBlank()) {
+            Optional<CinematicDefinition> named;
+            try {
+                named = cinematicRepository.load(cinematicName);
+            } catch (IOException e) {
+                return; // logged by the neoforge layer's own error handling around this call
+            }
+            if (named.isEmpty()) {
+                return; // named cinematic doesn't exist (deleted after the event was authored?)
+            }
+            rawKeyframes = named.get().getKeyframes();
+            durationSeconds = named.get().getDurationSeconds();
+        } else {
+            rawKeyframes = action.getKeyframes();
+            durationSeconds = action.getDurationSeconds();
+        }
+
         if (rawKeyframes == null || rawKeyframes.isEmpty()) {
             return;
         }
@@ -193,7 +221,7 @@ public class EventDispatcher {
                         k.getTimeSeconds() != null ? k.getTimeSeconds() : 1.0))
                 .toList();
 
-        cinematicSink.playCinematic(playerId, keyframes, action.getDurationSeconds());
+        cinematicSink.playCinematic(playerId, keyframes, durationSeconds);
     }
 
     private void fireSubtitleIfPresent(EventDefinition.ActionConfig action, UUID playerId) {

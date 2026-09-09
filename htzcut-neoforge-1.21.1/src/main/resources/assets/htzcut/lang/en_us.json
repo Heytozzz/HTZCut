@@ -1,4 +1,5 @@
 {
   "htzcut.narration.dragon_defeated": "The Ender Dragon falls. Silence returns to the End.",
-  "htzcut.narration.diamond_pickup": "A diamond! Fortune favors you today."
+  "htzcut.narration.diamond_pickup": "A diamond! Fortune favors you today.",
+  "item.htzcut.keyframe_marker": "Keyframe Marker"
 }

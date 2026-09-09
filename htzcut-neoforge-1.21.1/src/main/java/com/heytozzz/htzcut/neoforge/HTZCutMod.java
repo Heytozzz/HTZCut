@@ -2,19 +2,23 @@ package com.heytozzz.htzcut.neoforge;
 
 import com.heytozzz.htzcut.core.audio.AudioDeliveryRouter;
 import com.heytozzz.htzcut.core.audio.FileAudioAssetResolver;
+import com.heytozzz.htzcut.core.cinematic.CinematicRepository;
 import com.heytozzz.htzcut.core.config.EventDefinition;
 import com.heytozzz.htzcut.core.event.EventDispatcher;
 import com.heytozzz.htzcut.core.permission.PermissionChecker;
+import com.heytozzz.htzcut.core.scheduler.ActionScheduler;
 import com.heytozzz.htzcut.neoforge.audio.HttpCacheDeliveryChannel;
 import com.heytozzz.htzcut.neoforge.audio.HtzHttpAudioServer;
 import com.heytozzz.htzcut.neoforge.audio.SimpleVoiceChatDeliveryChannel;
 import com.heytozzz.htzcut.neoforge.client.HTZClientEvents;
 import com.heytozzz.htzcut.neoforge.cinematic.CinematicRunner;
+import com.heytozzz.htzcut.neoforge.cinematic.CinematicVisualizer;
 import com.heytozzz.htzcut.neoforge.command.HTZCommand;
 import com.heytozzz.htzcut.neoforge.config.EventFileManager;
 import com.heytozzz.htzcut.neoforge.config.HttpServerConfig;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
 import com.heytozzz.htzcut.neoforge.init.HTZRuntime;
+import com.heytozzz.htzcut.neoforge.item.HTZItems;
 import com.heytozzz.htzcut.neoforge.narration.ChatNarrationSink;
 import com.heytozzz.htzcut.neoforge.network.NetworkRegistration;
 import com.heytozzz.htzcut.neoforge.permission.PermissionCheckerFactory;
@@ -60,11 +64,13 @@ public class HTZCutMod {
     private TickActionScheduler scheduler;
     private FileFiredOnceStore firedOnceStore;
     private CinematicRunner cinematicRunner;
+    private CinematicRepository cinematicRepository;
 
     public HTZCutMod(IEventBus modEventBus) {
         HTZLog.info("Initializing HTZCut...");
 
         modEventBus.addListener(NetworkRegistration::register);
+        HTZItems.register(modEventBus);
 
         // Game event listeners can be registered immediately - they just
         // no-op via HTZRuntime.get() == null until the dispatcher below
@@ -116,6 +122,8 @@ public class HTZCutMod {
         subtitleSink = new NeoForgeSubtitleSink(event.getServer());
         scheduler = new TickActionScheduler();
         cinematicRunner = new CinematicRunner(event.getServer());
+        cinematicRepository = new CinematicRepository(
+                FMLPaths.CONFIGDIR.get().resolve("htzcut").resolve("cinematics"));
 
         WebEditorConfig webEditorConfig = WebEditorConfig.loadOrCreate();
         this.webEditorConfig = webEditorConfig;
@@ -173,6 +181,18 @@ public class HTZCutMod {
         return permissionChecker;
     }
 
+    public CinematicRepository cinematicRepository() {
+        return cinematicRepository;
+    }
+
+    public CinematicRunner cinematicRunner() {
+        return cinematicRunner;
+    }
+
+    public CinematicVisualizer cinematicVisualizer() {
+        return new CinematicVisualizer(scheduler);
+    }
+
     /**
      * Re-reads every event YAML from config/htzcut/events/ and rebuilds
      * the EventDispatcher, without touching the HTTP server, permission
@@ -187,7 +207,7 @@ public class HTZCutMod {
 
         EventDispatcher dispatcher = new EventDispatcher(
                 definitions, permissionChecker, audioRouter, narrationSink, soundSink, subtitleSink, scheduler,
-                firedOnceStore, cinematicRunner);
+                firedOnceStore, cinematicRunner, cinematicRepository);
         HTZRuntime.set(dispatcher);
 
         return definitions.size();
