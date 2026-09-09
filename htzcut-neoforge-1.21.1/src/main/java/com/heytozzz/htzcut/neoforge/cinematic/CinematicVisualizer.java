@@ -5,6 +5,7 @@ import com.heytozzz.htzcut.core.scheduler.ActionScheduler;
 import com.heytozzz.htzcut.neoforge.init.HTZLog;
 import com.heytozzz.htzcut.neoforge.item.HTZItems;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.EntityType;
@@ -58,8 +59,19 @@ public final class CinematicVisualizer {
             try {
                 Display.ItemDisplay display = new Display.ItemDisplay(EntityType.ITEM_DISPLAY, level);
                 display.setPos(keyframe.getX(), keyframe.getY(), keyframe.getZ());
-                display.setItemStack(new ItemStack(HTZItems.KEYFRAME_MARKER.get()));
-                display.setBillboardConstraints(Display.BillboardConstraints.CENTER);
+
+                // Display.ItemDisplay has no public setters for its item
+                // or billboard mode (both are private synced-data fields,
+                // only ever populated internally from saved NBT) - so we
+                // configure them the same way the vanilla /summon command
+                // does: build the NBT it would have been saved/loaded
+                // with, and load() it onto the freshly created entity.
+                CompoundTag tag = new CompoundTag();
+                ItemStack markerStack = new ItemStack(HTZItems.KEYFRAME_MARKER.get());
+                tag.put("item", markerStack.save(level.registryAccess()));
+                tag.putString("billboard", "center");
+                display.load(tag);
+
                 level.addFreshEntity(display);
                 spawned.add(display);
             } catch (Exception e) {
