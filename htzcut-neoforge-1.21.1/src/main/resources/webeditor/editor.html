@@ -5,8 +5,9 @@
 <title>HTZCut - Editor de eventos</title>
 <style>
   :root { color-scheme: dark; }
-  body { font-family: system-ui, sans-serif; background: #1e1f22; color: #eee; margin: 0; }
-  header { padding: 12px 16px; background: #2b2d31; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: system-ui, sans-serif; background: #1e1f22; color: #eee; display: flex; flex-direction: column; overflow: hidden; }
+  header { padding: 12px 16px; background: #2b2d31; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
   header h1 { font-size: 16px; margin: 0 12px 0 0; }
   select, input[type=text] { padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1f22; color: #eee; }
   button { padding: 6px 12px; border-radius: 4px; border: 1px solid #444; background: #2b2d31; color: #eee; cursor: pointer; }
@@ -15,14 +16,14 @@
   button.danger { background: #a83a3a; border-color: #a83a3a; }
   .spacer { flex: 1; }
 
-  .layout { display: flex; }
-  .canvas { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; }
-  .preview-panel { width: 380px; background: #17181a; padding: 16px; border-left: 1px solid #333; }
+  .layout { display: flex; flex: 1; min-height: 0; }
+  .canvas { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow-y: auto; min-height: 0; }
+  .preview-panel { width: 380px; background: #17181a; padding: 16px; border-left: 1px solid #333; overflow-y: auto; min-height: 0; flex-shrink: 0; }
   .preview-panel pre { white-space: pre-wrap; font-size: 12px; color: #9cdc8c; }
 
-  .node { background: #2b2d31; border: 1px solid #444; border-radius: 8px; padding: 12px 16px; width: 360px; margin-bottom: 4px; }
+  .node { background: #2b2d31; border: 1px solid #444; border-radius: 8px; padding: 12px 16px; width: 360px; margin-bottom: 4px; flex-shrink: 0; }
   .node-title { font-weight: bold; font-size: 12px; text-transform: uppercase; opacity: .7; margin-bottom: 8px; display: flex; justify-content: space-between; }
-  .connector { width: 2px; height: 24px; background: #4c7bd9; }
+  .connector { width: 2px; height: 24px; background: #4c7bd9; flex-shrink: 0; }
   .field { margin-bottom: 8px; }
   .field label { display: block; font-size: 11px; opacity: .7; margin-bottom: 3px; }
   .field-row { display: flex; gap: 6px; }
@@ -31,7 +32,7 @@
   .add-action { margin-top: 8px; }
   label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
   .modal { background: #2b2d31; border-radius: 8px; padding: 16px; width: 600px; max-height: 80vh; display: flex; flex-direction: column; }
   .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; overflow-y: auto; flex: 1; margin-top: 10px; }
   .modal-grid .entry { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 6px; cursor: pointer; }
@@ -350,6 +351,9 @@ function openPicker(kind, onSelect) {
 // ---------- Node rendering ----------
 function render() {
   const canvas = document.getElementById("canvas");
+  // Preserve scroll position across re-renders so adding/editing an
+  // action doesn't jump the user back to the top.
+  const scrollTop = canvas.scrollTop;
   canvas.innerHTML = "";
 
   canvas.appendChild(renderIdNode());
@@ -366,6 +370,7 @@ function render() {
   canvas.appendChild(connector());
   canvas.appendChild(renderConditionsNode());
 
+  canvas.scrollTop = scrollTop;
   updatePreview();
 }
 
@@ -576,6 +581,9 @@ function renderAddActionNode() {
     const type = node.querySelector("#new-action-type").value;
     event.actions.push(blankAction(type));
     render();
+    // Scroll to the newly added action (just above the "Añadir" node)
+    const canvas = document.getElementById("canvas");
+    canvas.scrollTop = canvas.scrollHeight;
   });
   return node;
 }
