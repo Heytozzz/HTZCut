@@ -33,7 +33,13 @@ public class CinematicConfigLoader {
 
     public CinematicDefinition loadOne(Path file) throws IOException {
         try (InputStream in = Files.newInputStream(file)) {
-            return yaml.load(in);
+            CinematicDefinition def = yaml.load(in);
+            if (def != null) {
+                // Older files written with a bare "keyframes:" deserialize
+                // as null. Force a real list so callers never NPE.
+                def.setKeyframes(def.getKeyframes());
+            }
+            return def;
         }
     }
 

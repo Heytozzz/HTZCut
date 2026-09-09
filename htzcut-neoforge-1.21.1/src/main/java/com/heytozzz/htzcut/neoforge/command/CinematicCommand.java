@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * /htzcut cinematic ... - builds and edits named, reusable camera paths
@@ -35,9 +36,9 @@ import java.util.Optional;
  *   list                                            - list all cinematics
  *   preview &lt;name&gt;                                 - play it on yourself now
  *   setduration &lt;name&gt; &lt;seconds|none&gt;              - set/clear the global duration
- *   keyframe add &lt;name&gt; [duration]                 - append a keyframe at your
+ *   keyframe add &lt;name&gt; [duration] [type]          - append a keyframe at your
  *                                                      current position/rotation
- *   keyframe set &lt;name&gt; &lt;index&gt; [duration]         - overwrite an existing
+ *   keyframe set &lt;name&gt; &lt;index&gt; [duration] [type]  - overwrite an existing
  *                                                      keyframe the same way
  *   keyframe remove &lt;name&gt; &lt;index&gt;                 - remove one (later indices
  *                                                      shift down automatically)
@@ -53,10 +54,15 @@ import java.util.Optional;
  * [duration]/&lt;duration&gt; accepts a number followed by a unit: "20t"
  * (ticks), "1.5s" (seconds), "2m" (minutes) - see TimeUtil.
  *
+ * [type] is optional and controls the path from the previous keyframe
+ * to this one: linear (default), ellipse, bezier.
+ *
  * Every subcommand that needs "your current position" requires the
  * command to be run by a player (not console/command blocks).
  */
 public final class CinematicCommand {
+
+    private static final Set<String> VALID_PATH_TYPES = Set.of("linear", "ellipse", "bezier");
 
     private CinematicCommand() {
     }
@@ -88,23 +94,36 @@ public final class CinematicCommand {
                                 .then(Commands.argument("name", StringArgumentType.word())
                                         .suggests((ctx, builder) -> suggestNames(mod, builder))
                                         .executes(ctx -> addKeyframe(ctx.getSource(), mod,
-                                                StringArgumentType.getString(ctx, "name"), null))
+                                                StringArgumentType.getString(ctx, "name"), null, null))
                                         .then(Commands.argument("duration", StringArgumentType.word())
                                                 .executes(ctx -> addKeyframe(ctx.getSource(), mod,
                                                         StringArgumentType.getString(ctx, "name"),
-                                                        StringArgumentType.getString(ctx, "duration"))))))
+                                                        StringArgumentType.getString(ctx, "duration"), null))
+                                                .then(Commands.argument("type", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(VALID_PATH_TYPES, builder))
+                                                        .executes(ctx -> addKeyframe(ctx.getSource(), mod,
+                                                                StringArgumentType.getString(ctx, "name"),
+                                                                StringArgumentType.getString(ctx, "duration"),
+                                                                StringArgumentType.getString(ctx, "type")))))))
                         .then(Commands.literal("set")
                                 .then(Commands.argument("name", StringArgumentType.word())
                                         .suggests((ctx, builder) -> suggestNames(mod, builder))
                                         .then(Commands.argument("index", IntegerArgumentType.integer(0))
                                                 .executes(ctx -> setKeyframe(ctx.getSource(), mod,
                                                         StringArgumentType.getString(ctx, "name"),
-                                                        IntegerArgumentType.getInteger(ctx, "index"), null))
+                                                        IntegerArgumentType.getInteger(ctx, "index"), null, null))
                                                 .then(Commands.argument("duration", StringArgumentType.word())
                                                         .executes(ctx -> setKeyframe(ctx.getSource(), mod,
                                                                 StringArgumentType.getString(ctx, "name"),
                                                                 IntegerArgumentType.getInteger(ctx, "index"),
-                                                                StringArgumentType.getString(ctx, "duration")))))))
+                                                                StringArgumentType.getString(ctx, "duration"), null))
+                                                        .then(Commands.argument("type", StringArgumentType.word())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(VALID_PATH_TYPES, builder))
+                                                                .executes(ctx -> setKeyframe(ctx.getSource(), mod,
+                                                                        StringArgumentType.getString(ctx, "name"),
+                                                                        IntegerArgumentType.getInteger(ctx, "index"),
+                                                                        StringArgumentType.getString(ctx, "duration"),
+                                                                        StringArgumentType.getString(ctx, "type"))))))))
                         .then(Commands.literal("remove")
                                 .then(Commands.argument("name", StringArgumentType.word())
                                         .suggests((ctx, builder) -> suggestNames(mod, builder))
@@ -249,7 +268,8 @@ public final class CinematicCommand {
 
     // ---- keyframe editing ----
 
-    private static int addKeyframe(CommandSourceStack source, HTZCutMod mod, String name, String durationInput) {
+    private static int addKeyframe(CommandSourceStack source, HTZCutMod mod, String name,
+                                   String durationInput, String pathTypeInput) {
         ServerPlayer player;
         try {
             player = source.getPlayerOrException();
@@ -276,8 +296,15 @@ public final class CinematicCommand {
             }
         }
 
+        String pathType;
+        try {
+            pathType = resolvePathType(pathTypeInput);
+        } catch (IllegalArgumentException e) {
+            return fail(source, e.getMessage());
+        }
+
         CinematicDefinition def = maybeDef.get();
-        KeyframeConfig keyframe = captureKeyframe(player, duration);
+        KeyframeConfig keyframe = captureKeyframe(player, duration, pathType);
         def.getKeyframes().add(keyframe);
 
         try {
@@ -287,11 +314,13 @@ public final class CinematicCommand {
         }
 
         int index = def.getKeyframes().size() - 1;
-        success(source, "Added keyframe #" + index + " to '" + name + "' at your position.");
+        String typeLabel = pathType.equals("linear") ? "" : " (" + pathType + ")";
+        success(source, "Added keyframe #" + index + " to '" + name + "' at your position" + typeLabel + ".");
         return 1;
     }
 
-    private static int setKeyframe(CommandSourceStack source, HTZCutMod mod, String name, int index, String durationInput) {
+    private static int setKeyframe(CommandSourceStack source, HTZCutMod mod, String name, int index,
+                                   String durationInput, String pathTypeInput) {
         ServerPlayer player;
         try {
             player = source.getPlayerOrException();
@@ -324,7 +353,19 @@ public final class CinematicCommand {
             }
         }
 
-        def.getKeyframes().set(index, captureKeyframe(player, duration));
+        // Keep existing path type if the player didn't specify a new one
+        String pathType;
+        try {
+            if (pathTypeInput != null) {
+                pathType = resolvePathType(pathTypeInput);
+            } else {
+                pathType = def.getKeyframes().get(index).resolvedPathType();
+            }
+        } catch (IllegalArgumentException e) {
+            return fail(source, e.getMessage());
+        }
+
+        def.getKeyframes().set(index, captureKeyframe(player, duration, pathType));
 
         try {
             mod.cinematicRepository().save(def);
@@ -422,10 +463,13 @@ public final class CinematicCommand {
         for (int i = 0; i < keyframes.size(); i++) {
             KeyframeConfig keyframe = keyframes.get(i);
             int index = i;
+            String type = keyframe.resolvedPathType();
+            String typeLabel = type.equals("linear") ? "" : " [" + type + "]";
             source.sendSuccess(() -> Component.literal("  #" + index + " ")
                     .append(teleportLink(keyframe))
                     .append(Component.literal(keyframe.getTimeSeconds() != null
-                            ? "  (" + keyframe.getTimeSeconds() + "s)" : "  (default 1.0s)")), false);
+                            ? "  (" + keyframe.getTimeSeconds() + "s)" + typeLabel
+                            : "  (default 1.0s)" + typeLabel)), false);
         }
 
         mod.cinematicVisualizer().show(player.serverLevel(), keyframes);
@@ -472,7 +516,19 @@ public final class CinematicCommand {
 
     // ---- helpers ----
 
-    private static KeyframeConfig captureKeyframe(ServerPlayer player, Double timeSeconds) {
+    private static String resolvePathType(String input) {
+        if (input == null || input.isBlank()) {
+            return "linear";
+        }
+        String normalized = input.trim().toLowerCase(Locale.ROOT);
+        if (!VALID_PATH_TYPES.contains(normalized)) {
+            throw new IllegalArgumentException(
+                    "Unknown path type '" + input + "'. Use: linear, ellipse, bezier.");
+        }
+        return normalized;
+    }
+
+    private static KeyframeConfig captureKeyframe(ServerPlayer player, Double timeSeconds, String pathType) {
         KeyframeConfig keyframe = new KeyframeConfig();
         keyframe.setX(player.getX());
         keyframe.setY(player.getY());
@@ -480,13 +536,16 @@ public final class CinematicCommand {
         keyframe.setYaw(player.getYRot());
         keyframe.setPitch(player.getXRot());
         keyframe.setTimeSeconds(timeSeconds);
+        keyframe.setPathType(pathType);
         return keyframe;
     }
 
     private static List<CameraKeyframe> toCameraKeyframes(List<KeyframeConfig> raw) {
         return raw.stream()
-                .map(k -> new CameraKeyframe(k.getX(), k.getY(), k.getZ(), k.getYaw(), k.getPitch(),
-                        k.getTimeSeconds() != null ? k.getTimeSeconds() : 1.0))
+                .map(k -> new CameraKeyframe(
+                        k.getX(), k.getY(), k.getZ(), k.getYaw(), k.getPitch(),
+                        k.getTimeSeconds() != null ? k.getTimeSeconds() : 1.0,
+                        k.resolvedPathType()))
                 .toList();
     }
 

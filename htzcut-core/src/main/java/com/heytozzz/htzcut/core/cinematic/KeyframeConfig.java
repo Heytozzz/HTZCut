@@ -8,6 +8,10 @@ package com.heytozzz.htzcut.core.cinematic;
  * cinematic starts, for the first one) to this one - defaults to 1.0
  * second if left unset.
  *
+ * pathType controls how the camera travels from the previous keyframe
+ * to this one: "linear" (straight line, default), "ellipse" (elliptical
+ * arc), or "bezier" (smooth curve with automatic control points).
+ *
  * Shared between EventDefinition.ActionConfig (inline keyframes) and
  * CinematicDefinition (named, reusable cinematics) so both read/write
  * the exact same shape.
@@ -20,6 +24,8 @@ public class KeyframeConfig {
     private float yaw;
     private float pitch;
     private Double timeSeconds;
+    /** linear | ellipse | bezier — how to travel TO this keyframe */
+    private String pathType;
 
     public double getX() {
         return x;
@@ -67,5 +73,21 @@ public class KeyframeConfig {
 
     public void setTimeSeconds(Double timeSeconds) {
         this.timeSeconds = timeSeconds;
+    }
+
+    public String getPathType() {
+        return pathType;
+    }
+
+    public void setPathType(String pathType) {
+        this.pathType = pathType;
+    }
+
+    /** Normalized path type, never null. Defaults to "linear". */
+    public String resolvedPathType() {
+        if (pathType == null || pathType.isBlank()) {
+            return "linear";
+        }
+        return pathType.trim().toLowerCase();
     }
 }

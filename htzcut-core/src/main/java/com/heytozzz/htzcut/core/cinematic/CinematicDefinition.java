@@ -36,11 +36,19 @@ public class CinematicDefinition {
         this.durationSeconds = durationSeconds;
     }
 
+    /**
+     * Always returns a non-null list. Older YAML files that were written
+     * with a bare "keyframes:" (no value) deserialize as null; this
+     * guards against that and against any caller that might set null.
+     */
     public List<KeyframeConfig> getKeyframes() {
+        if (keyframes == null) {
+            keyframes = new ArrayList<>();
+        }
         return keyframes;
     }
 
     public void setKeyframes(List<KeyframeConfig> keyframes) {
-        this.keyframes = keyframes;
+        this.keyframes = keyframes != null ? keyframes : new ArrayList<>();
     }
 }

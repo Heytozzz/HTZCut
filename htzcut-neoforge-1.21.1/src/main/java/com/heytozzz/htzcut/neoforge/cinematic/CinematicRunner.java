@@ -20,6 +20,11 @@ import java.util.UUID;
  * interpolating position and rotation between them, then restores their
  * original gamemode and position once the path finishes.
  *
+ * Supports path types per segment (defined on the *destination* keyframe):
+ *   - linear  : straight line (default)
+ *   - ellipse : elliptical arc in the horizontal plane + linear height
+ *   - bezier  : quadratic Bezier with an automatic outward control point
+ *
  * Ticked once per server tick from HTZCutMod (same pattern as
  * TickActionScheduler) - constructed once at server start and reused
  * across /htzcut reload, so an in-progress cinematic isn't interrupted
@@ -40,6 +45,8 @@ public final class CinematicRunner implements CinematicSink {
 
     private static final int TICKS_PER_SECOND = 20;
     private static final double MIN_SEGMENT_SECONDS = 0.05;
+    /** How far the auto control point bulges sideways, as a fraction of segment length. */
+    private static final double CURVE_BULGE = 0.35;
 
     private final MinecraftServer server;
     private final Map<UUID, ActiveCinematic> active = new HashMap<>();
@@ -172,9 +179,27 @@ public final class CinematicRunner implements CinematicSink {
                 float t = segment.ticks == 0 ? 1f : (float) remaining / segment.ticks;
                 CameraKeyframe target = segment.keyframe;
 
-                double x = lerp(fromX, target.x(), t);
-                double y = lerp(fromY, target.y(), t);
-                double z = lerp(fromZ, target.z(), t);
+                double x, y, z;
+                switch (target.resolvedPathType()) {
+                    case "ellipse" -> {
+                        double[] p = interpolateEllipse(fromX, fromY, fromZ, target.x(), target.y(), target.z(), t);
+                        x = p[0];
+                        y = p[1];
+                        z = p[2];
+                    }
+                    case "bezier" -> {
+                        double[] p = interpolateBezier(fromX, fromY, fromZ, target.x(), target.y(), target.z(), t);
+                        x = p[0];
+                        y = p[1];
+                        z = p[2];
+                    }
+                    default -> { // linear
+                        x = lerp(fromX, target.x(), t);
+                        y = lerp(fromY, target.y(), t);
+                        z = lerp(fromZ, target.z(), t);
+                    }
+                }
+
                 float yaw = lerpAngle(fromYaw, target.yaw(), t);
                 float pitch = lerp(fromPitch, target.pitch(), t);
 
@@ -191,6 +216,82 @@ public final class CinematicRunner implements CinematicSink {
         }
 
         return true; // ran past every segment - cinematic finished
+    }
+
+    /**
+     * Elliptical arc in the horizontal plane + linear height.
+     * The major axis runs from A→B on XZ; the minor axis is perpendicular
+     * and sized to CURVE_BULGE * distance so the path bows outward.
+     * Parameter t goes 0→1 along a half-ellipse (sin/cos).
+     */
+    private double[] interpolateEllipse(double x0, double y0, double z0,
+                                        double x1, double y1, double z1, float t) {
+        double dx = x1 - x0;
+        double dz = z1 - z0;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+
+        // Midpoint of the chord
+        double mx = (x0 + x1) * 0.5;
+        double mz = (z0 + z1) * 0.5;
+
+        // Perpendicular unit vector in XZ (rotated 90°)
+        double perpX = 0;
+        double perpZ = 0;
+        if (dist > 1e-6) {
+            perpX = -dz / dist;
+            perpZ = dx / dist;
+        }
+
+        double minor = dist * CURVE_BULGE;
+
+        // Parametric half-ellipse: angle from π → 0 so we start at A and end at B
+        double angle = Math.PI * (1.0 - t);
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+
+        double x = mx + (dx * 0.5) * cos + perpX * minor * sin;
+        double z = mz + (dz * 0.5) * cos + perpZ * minor * sin;
+        double y = lerp(y0, y1, t);
+
+        return new double[]{x, y, z};
+    }
+
+    /**
+     * Quadratic Bezier with an automatic control point offset perpendicular
+     * to the segment (same bulge factor as ellipse). Gives a smooth curve
+     * that feels less "perfectly elliptical" and more organic.
+     */
+    private double[] interpolateBezier(double x0, double y0, double z0,
+                                       double x1, double y1, double z1, float t) {
+        double dx = x1 - x0;
+        double dy = y1 - y0;
+        double dz = z1 - z0;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+
+        double mx = (x0 + x1) * 0.5;
+        double my = (y0 + y1) * 0.5;
+        double mz = (z0 + z1) * 0.5;
+
+        double perpX = 0;
+        double perpZ = 0;
+        if (dist > 1e-6) {
+            perpX = -dz / dist;
+            perpZ = dx / dist;
+        }
+
+        double bulge = dist * CURVE_BULGE;
+        // Control point: midpoint + sideways offset (also slightly lifted)
+        double cx = mx + perpX * bulge;
+        double cy = my + Math.abs(dy) * 0.15 + 0.5; // slight vertical lift
+        double cz = mz + perpZ * bulge;
+
+        // Quadratic Bezier: (1-t)²·P0 + 2(1-t)t·C + t²·P1
+        double u = 1.0 - t;
+        double x = u * u * x0 + 2 * u * t * cx + t * t * x1;
+        double y = u * u * y0 + 2 * u * t * cy + t * t * y1;
+        double z = u * u * z0 + 2 * u * t * cz + t * t * z1;
+
+        return new double[]{x, y, z};
     }
 
     private void restore(ServerPlayer player, ActiveCinematic cinematic) {
