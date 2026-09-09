@@ -5,35 +5,49 @@
 <title>HTZCut - Editor de eventos</title>
 <style>
   :root { color-scheme: dark; }
-  html, body { height: 100%; margin: 0; }
-  body { font-family: system-ui, sans-serif; background: #1e1f22; color: #eee; display: flex; flex-direction: column; overflow: hidden; }
-  header { padding: 12px 16px; background: #2b2d31; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { font-family: system-ui, sans-serif; background: #1e1f22; color: #eee; margin: 0; padding: 0; min-height: 100vh; }
+  header {
+    padding: 12px 16px; background: #2b2d31; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 50; border-bottom: 1px solid #333;
+  }
   header h1 { font-size: 16px; margin: 0 12px 0 0; }
   select, input[type=text] { padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1f22; color: #eee; }
   button { padding: 6px 12px; border-radius: 4px; border: 1px solid #444; background: #2b2d31; color: #eee; cursor: pointer; }
   button:hover { background: #383a40; }
   button.primary { background: #4c7bd9; border-color: #4c7bd9; }
   button.danger { background: #a83a3a; border-color: #a83a3a; }
+  button:disabled { opacity: .4; cursor: default; }
   .spacer { flex: 1; }
 
-  .layout { display: flex; flex: 1; min-height: 0; }
-  .canvas { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow-y: auto; min-height: 0; }
-  .preview-panel { width: 380px; background: #17181a; padding: 16px; border-left: 1px solid #333; overflow-y: auto; min-height: 0; flex-shrink: 0; }
-  .preview-panel pre { white-space: pre-wrap; font-size: 12px; color: #9cdc8c; }
+  .layout { display: flex; align-items: flex-start; min-height: calc(100vh - 56px); }
+  .canvas {
+    flex: 1; padding: 24px 16px 80px; display: flex; flex-direction: column; align-items: center;
+  }
+  .preview-panel {
+    width: 380px; background: #17181a; padding: 16px; border-left: 1px solid #333;
+    position: sticky; top: 56px; align-self: flex-start; max-height: calc(100vh - 56px); overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .preview-panel pre { white-space: pre-wrap; font-size: 12px; color: #9cdc8c; margin: 0; }
 
-  .node { background: #2b2d31; border: 1px solid #444; border-radius: 8px; padding: 12px 16px; width: 360px; margin-bottom: 4px; flex-shrink: 0; }
-  .node-title { font-weight: bold; font-size: 12px; text-transform: uppercase; opacity: .7; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .node {
+    background: #2b2d31; border: 1px solid #444; border-radius: 8px; padding: 12px 16px;
+    width: 100%; max-width: 420px; margin-bottom: 4px;
+  }
+  .node-title { font-weight: bold; font-size: 12px; text-transform: uppercase; opacity: .7; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
   .connector { width: 2px; height: 24px; background: #4c7bd9; flex-shrink: 0; }
   .field { margin-bottom: 8px; }
   .field label { display: block; font-size: 11px; opacity: .7; margin-bottom: 3px; }
-  .field-row { display: flex; gap: 6px; }
+  .field-row { display: flex; gap: 6px; align-items: center; }
   .field-row input { flex: 1; }
   .node .remove { background: none; border: none; color: #d97070; cursor: pointer; font-size: 12px; padding: 0; }
   .add-action { margin-top: 8px; }
   label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-  .modal { background: #2b2d31; border-radius: 8px; padding: 16px; width: 600px; max-height: 80vh; display: flex; flex-direction: column; }
+  .modal { background: #2b2d31; border-radius: 8px; padding: 16px; width: 600px; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; }
   .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; overflow-y: auto; flex: 1; margin-top: 10px; }
   .modal-grid .entry { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 6px; cursor: pointer; }
   .modal-grid .entry:hover { background: #3a3c42; }
@@ -65,8 +79,7 @@
 </div>
 
 <script>
-// ---------- State ----------
-let currentFilename = null; // null = new, unsaved event
+let currentFilename = null;
 let event = blankEvent();
 
 function blankEvent() {
@@ -84,7 +97,11 @@ function blankAction(type) {
   return { type: "DIALOGUE", audio: "", subtitle: "", subtitleBoxEffect: "INSTANT", subtitleTextEffect: "INSTANT", subtitleTextDurationSeconds: null, subtitleHoldSeconds: null, subtitlePosition: "BOTTOM", delaySeconds: null };
 }
 
-// ---------- Event list ----------
+function normalizeActionType(type) {
+  if (!type) return "DIALOGUE";
+  return String(type).trim().toUpperCase();
+}
+
 async function loadEventList() {
   const list = await fetch("/api/events").then(r => r.json());
   const select = document.getElementById("event-select");
@@ -112,20 +129,15 @@ document.getElementById("event-select").addEventListener("change", async (e) => 
 });
 
 function normalizeLoaded(data) {
+  const actions = (data.actions || []).map(a => ({ ...a, type: normalizeActionType(a.type) }));
   return {
     id: data.id || "",
     trigger: data.trigger || { type: "ITEM_PICKUP", value: "" },
-    actions: data.actions || [],
+    actions,
     conditions: data.conditions || { permission: "", oncePerPlayer: false }
   };
 }
 
-// Numeric action fields must reach the backend as a number or null -
-// EventDefinition maps them to java.lang.Double, and Gson rejects an
-// empty string ("") there with a 400. Inputs are kept as null once
-// cleared (see the DIALOGUE field listeners above), but this is a
-// belt-and-suspenders pass in case a stray "" ever ends up on the
-// event object (e.g. state carried over from before that fix).
 const NUMERIC_ACTION_FIELDS = ["subtitleTextDurationSeconds", "subtitleHoldSeconds", "delaySeconds"];
 
 function toSavePayload(ev) {
@@ -140,7 +152,6 @@ function toSavePayload(ev) {
   return clone;
 }
 
-// ---------- Toolbar actions ----------
 document.getElementById("btn-new").addEventListener("click", () => {
   document.getElementById("event-select").value = "";
   currentFilename = null;
@@ -224,46 +235,69 @@ document.getElementById("btn-preview").addEventListener("click", () => {
   updatePreview();
 });
 
-// ---------- YAML preview (mirrors EventConfigWriter's format) ----------
 function toYamlPreview(def) {
-  const esc = s => (s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-  let out = `id: "${esc(def.id)}"\n\n`;
-  out += `trigger:\n  type: ${(def.trigger.type || "").toLowerCase()}\n  value: "${esc(def.trigger.value)}"\n\n`;
+  const esc = s => (s || "").replace(/\/g, "\\").replace(/"/g, '\"').replace(/
+/g, "\n");
+  let out = `id: "${esc(def.id)}"
+
+`;
+  out += `trigger:
+  type: ${(def.trigger.type || "").toLowerCase()}
+  value: "${esc(def.trigger.value)}"
+
+`;
 
   if (def.actions.length > 0) {
-    out += "actions:\n";
+    out += "actions:
+";
     for (const a of def.actions) {
-      out += `  - type: ${(a.type || "").toLowerCase()}\n`;
+      out += `  - type: ${(a.type || "").toLowerCase()}
+`;
       if (a.delaySeconds !== "" && a.delaySeconds != null) {
-        out += `    delay_seconds: ${a.delaySeconds}\n`;
+        out += `    delay_seconds: ${a.delaySeconds}
+`;
       }
-      if (a.type === "SOUND") out += `    sound: "${esc(a.sound)}"\n`;
+      if (a.type === "SOUND") out += `    sound: "${esc(a.sound)}"
+`;
       if (a.type === "NARRATION") {
-        out += `    text_key: "${esc(a.textKey)}"\n`;
-        if (a.fallbackLocale) out += `    fallback_locale: "${esc(a.fallbackLocale)}"\n`;
+        out += `    text_key: "${esc(a.textKey)}"
+`;
+        if (a.fallbackLocale) out += `    fallback_locale: "${esc(a.fallbackLocale)}"
+`;
       }
       if (a.type === "DIALOGUE") {
-        out += `    audio: "${esc(a.audio)}"\n`;
+        out += `    audio: "${esc(a.audio)}"
+`;
         if (a.subtitle) {
-          out += `    subtitle: "${esc(a.subtitle)}"\n`;
-          if (a.subtitleBoxEffect) out += `    subtitle_box_effect: ${a.subtitleBoxEffect.toLowerCase()}\n`;
-          if (a.subtitleTextEffect) out += `    subtitle_text_effect: ${a.subtitleTextEffect.toLowerCase()}\n`;
+          out += `    subtitle: "${esc(a.subtitle)}"
+`;
+          if (a.subtitleBoxEffect) out += `    subtitle_box_effect: ${a.subtitleBoxEffect.toLowerCase()}
+`;
+          if (a.subtitleTextEffect) out += `    subtitle_text_effect: ${a.subtitleTextEffect.toLowerCase()}
+`;
           if (a.subtitleTextDurationSeconds !== "" && a.subtitleTextDurationSeconds != null) {
-            out += `    subtitle_text_duration_seconds: ${a.subtitleTextDurationSeconds}\n`;
+            out += `    subtitle_text_duration_seconds: ${a.subtitleTextDurationSeconds}
+`;
           }
           if (a.subtitleHoldSeconds !== "" && a.subtitleHoldSeconds != null) {
-            out += `    subtitle_hold_seconds: ${a.subtitleHoldSeconds}\n`;
+            out += `    subtitle_hold_seconds: ${a.subtitleHoldSeconds}
+`;
           }
-          if (a.subtitlePosition) out += `    subtitle_position: ${a.subtitlePosition.toLowerCase()}\n`;
+          if (a.subtitlePosition) out += `    subtitle_position: ${a.subtitlePosition.toLowerCase()}
+`;
         }
       }
-      out += "\n";
+      out += "
+";
     }
   }
 
-  out += "conditions:\n";
-  if (def.conditions.permission) out += `  permission: "${esc(def.conditions.permission)}"\n`;
-  out += `  once_per_player: ${!!def.conditions.oncePerPlayer}\n`;
+  out += "conditions:
+";
+  if (def.conditions.permission) out += `  permission: "${esc(def.conditions.permission)}"
+`;
+  out += `  once_per_player: ${!!def.conditions.oncePerPlayer}
+`;
   return out;
 }
 
@@ -273,7 +307,6 @@ function updatePreview() {
   }
 }
 
-// ---------- Resource picker modal ----------
 function openPicker(kind, onSelect) {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
@@ -348,12 +381,9 @@ function openPicker(kind, onSelect) {
   load();
 }
 
-// ---------- Node rendering ----------
 function render() {
   const canvas = document.getElementById("canvas");
-  // Preserve scroll position across re-renders so adding/editing an
-  // action doesn't jump the user back to the top.
-  const scrollTop = canvas.scrollTop;
+  const scrollY = window.scrollY;
   canvas.innerHTML = "";
 
   canvas.appendChild(renderIdNode());
@@ -370,7 +400,7 @@ function render() {
   canvas.appendChild(connector());
   canvas.appendChild(renderConditionsNode());
 
-  canvas.scrollTop = scrollTop;
+  window.scrollTo(0, scrollY);
   updatePreview();
 }
 
@@ -410,7 +440,7 @@ function renderTriggerNode() {
       <label>valor</label>
       <div class="field-row">
         <input type="text" id="f-trigger-value" value="${escapeHtml(event.trigger.value)}">
-        <button id="f-trigger-pick">Elegir...</button>
+        <button type="button" id="f-trigger-pick">Elegir...</button>
       </div>
     </div>`;
 
@@ -447,22 +477,24 @@ function renderActionNode(action, index) {
   const node = document.createElement("div");
   node.className = "node";
   const types = ["SOUND", "NARRATION", "DIALOGUE"];
+  const type = normalizeActionType(action.type);
+  action.type = type;
 
   let fieldsHtml = "";
-  if (action.type === "SOUND") {
+  if (type === "SOUND") {
     fieldsHtml = `
       <div class="field">
         <label>sonido</label>
         <div class="field-row">
           <input type="text" id="f-sound" value="${escapeHtml(action.sound || "")}">
-          <button id="f-sound-pick">Elegir...</button>
+          <button type="button" id="f-sound-pick">Elegir...</button>
         </div>
       </div>`;
-  } else if (action.type === "NARRATION") {
+  } else if (type === "NARRATION") {
     fieldsHtml = `
       <div class="field"><label>text_key</label><input type="text" id="f-textkey" value="${escapeHtml(action.textKey || "")}"></div>
       <div class="field"><label>fallback_locale</label><input type="text" id="f-fallback" value="${escapeHtml(action.fallbackLocale || "")}"></div>`;
-  } else if (action.type === "DIALOGUE") {
+  } else if (type === "DIALOGUE") {
     const boxEffects = ["INSTANT", "FADE_IN", "BOUNCE", "SLIDE_TOP", "SLIDE_BOTTOM", "SLIDE_LEFT", "SLIDE_RIGHT"];
     const textEffects = [...boxEffects, "TYPEWRITER_LETTERS", "TYPEWRITER_WORDS"];
     const opt = (list, current) => list.map(v =>
@@ -493,20 +525,20 @@ function renderActionNode(action, index) {
   node.innerHTML = `
     <div class="node-title">
       <span>Acción #${index + 1}</span>
-      <button class="remove" data-index="${index}">quitar &times;</button>
+      <button type="button" class="remove" data-index="${index}">quitar &times;</button>
     </div>
     <div class="field">
       <label>tipo</label>
       <select id="f-action-type">
-        ${types.map(t => `<option value="${t}" ${action.type === t ? "selected" : ""}>${t}</option>`).join("")}
+        ${types.map(t => `<option value="${t}" ${type === t ? "selected" : ""}>${t}</option>`).join("")}
       </select>
     </div>
     <div class="field"><label>delay antes de esta acción (s, respecto a la anterior)</label>
     <input type="text" id="f-delay" value="${escapeHtml(action.delaySeconds != null ? action.delaySeconds : "")}" placeholder="0"></div>
     ${fieldsHtml}
     <div class="field-row">
-      <button data-move="up" data-index="${index}" ${index === 0 ? "disabled" : ""}>&uarr; subir</button>
-      <button data-move="down" data-index="${index}" ${index === event.actions.length - 1 ? "disabled" : ""}>&darr; bajar</button>
+      <button type="button" data-move="up" data-index="${index}" ${index === 0 ? "disabled" : ""}>&uarr; subir</button>
+      <button type="button" data-move="down" data-index="${index}" ${index === event.actions.length - 1 ? "disabled" : ""}>&darr; bajar</button>
     </div>`;
 
   node.querySelector("#f-action-type").addEventListener("change", e => {
@@ -520,16 +552,16 @@ function renderActionNode(action, index) {
     updatePreview();
   });
 
-  if (action.type === "SOUND") {
+  if (type === "SOUND") {
     node.querySelector("#f-sound").addEventListener("input", e => { action.sound = e.target.value; updatePreview(); });
     node.querySelector("#f-sound-pick").addEventListener("click", () => openPicker("sounds", id => {
       action.sound = id;
       render();
     }));
-  } else if (action.type === "NARRATION") {
+  } else if (type === "NARRATION") {
     node.querySelector("#f-textkey").addEventListener("input", e => { action.textKey = e.target.value; updatePreview(); });
     node.querySelector("#f-fallback").addEventListener("input", e => { action.fallbackLocale = e.target.value; updatePreview(); });
-  } else if (action.type === "DIALOGUE") {
+  } else if (type === "DIALOGUE") {
     node.querySelector("#f-audio").addEventListener("input", e => { action.audio = e.target.value; updatePreview(); });
     node.querySelector("#f-subtitle").addEventListener("input", e => { action.subtitle = e.target.value; updatePreview(); });
     node.querySelector("#f-box-effect").addEventListener("change", e => { action.subtitleBoxEffect = e.target.value; updatePreview(); });
@@ -556,6 +588,7 @@ function renderActionNode(action, index) {
       const dir = btn.dataset.move === "up" ? -1 : 1;
       const i = index;
       const j = i + dir;
+      if (j < 0 || j >= event.actions.length) return;
       [event.actions[i], event.actions[j]] = [event.actions[j], event.actions[i]];
       render();
     });
@@ -575,15 +608,13 @@ function renderAddActionNode() {
         <option value="NARRATION">narration</option>
         <option value="DIALOGUE">dialogue</option>
       </select>
-      <button id="add-action-btn" class="primary">+ Añadir</button>
+      <button type="button" id="add-action-btn" class="primary">+ Añadir</button>
     </div>`;
   node.querySelector("#add-action-btn").addEventListener("click", () => {
     const type = node.querySelector("#new-action-type").value;
     event.actions.push(blankAction(type));
     render();
-    // Scroll to the newly added action (just above the "Añadir" node)
-    const canvas = document.getElementById("canvas");
-    canvas.scrollTop = canvas.scrollHeight;
+    window.scrollTo(0, document.body.scrollHeight);
   });
   return node;
 }
@@ -613,10 +644,9 @@ function renderConditionsNode() {
 }
 
 function escapeHtml(s) {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 }
 
-// ---------- Init ----------
 loadEventList();
 render();
 </script>
